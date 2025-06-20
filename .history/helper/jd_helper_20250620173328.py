@@ -105,23 +105,18 @@ def get_random_useragent():
 
 
 def wait_some_time():
-    """安全智能等待时间 - 防风控优化"""
+    """智能等待时间 - 秒杀时间更快"""
     from datetime import datetime
 
     now = datetime.now()
 
-    # 秒杀时间段使用适中间隔（防风控）
+    # 秒杀时间段使用极短间隔
     if 11 <= now.hour <= 12 and 55 <= now.minute <= 35:
-        # 秒杀时间：100-500ms随机间隔（安全范围）
-        base_interval = random.randint(100, 500) / 1000
-        # 添加随机波动，模拟人类行为
-        random_factor = random.uniform(0.8, 1.5)
-        time.sleep(base_interval * random_factor)
+        # 秒杀时间：10-50ms随机间隔
+        time.sleep(random.randint(10, 50) / 1000)
     else:
-        # 平时：200-800ms随机间隔
-        base_interval = random.randint(200, 800) / 1000
-        random_factor = random.uniform(0.9, 1.2)
-        time.sleep(base_interval * random_factor)
+        # 平时：100-300ms随机间隔
+        time.sleep(random.randint(100, 300) / 1000)
 
 
 def send_wechat(message):

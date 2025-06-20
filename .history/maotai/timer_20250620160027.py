@@ -50,76 +50,19 @@ class Timer(object):
 
     def jd_time(self):
         """
-        获取网络时间毫秒（多种备选方案）
+        从京东服务器获取时间毫秒
         :return:
         """
-        # 尝试多个时间源
-        time_sources = [
-            self._get_jd_time_from_page,
-            self._get_time_from_worldclock,
-            self._get_time_from_beijing_time,
-            self._get_local_time_as_fallback
-        ]
-
-        for source in time_sources:
-            try:
-                result = source()
-                if result:
-                    return result
-            except Exception as e:
-                logger.debug(f'时间源 {source.__name__} 失败: {e}')
-                continue
-
-        # 所有方案都失败，使用本地时间
-        logger.warning('所有网络时间源都失败，使用本地时间')
-        return self.local_time()
-
-    def _get_jd_time_from_page(self):
-        """从京东页面获取时间"""
-        url = 'https://www.jd.com'
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        resp = requests.get(url, headers=headers, timeout=3)
-        if resp.status_code == 200:
-            # 从响应头获取服务器时间
-            server_time = resp.headers.get('Date')
-            if server_time:
-                from datetime import datetime
-                import email.utils
-                dt = email.utils.parsedate_to_datetime(server_time)
-                return int(dt.timestamp() * 1000)
-        return None
-
-    def _get_time_from_worldclock(self):
-        """从世界时钟API获取北京时间"""
-        url = 'http://worldclockapi.com/api/json/asia/shanghai/now'
-        resp = requests.get(url, timeout=3)
-        if resp.status_code == 200:
-            data = resp.json()
-            time_str = data.get('currentDateTime')
-            if time_str:
-                from datetime import datetime
-                # 解析ISO格式时间
-                dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                return int(dt.timestamp() * 1000)
-        return None
-
-    def _get_time_from_beijing_time(self):
-        """从北京时间API获取时间"""
-        url = 'http://api.m.taobao.com/rest/api3.do?api=mtop.common.getTimestamp'
-        resp = requests.get(url, timeout=3)
-        if resp.status_code == 200:
-            data = resp.json()
-            timestamp = data.get('data', {}).get('t')
-            if timestamp:
-                return int(timestamp)
-        return None
-
-    def _get_local_time_as_fallback(self):
-        """本地时间作为最后备选"""
-        logger.info('使用本地时间作为时间源')
-        return self.local_time()
+        try:
+            # 尝试原始接口
+            url = 'https://a.jd.com//ajax/queryServerData.html'
+            ret = requests.get(url, timeout=5).text
+            js = json.loads(ret)
+            return int(js["serverTime"])
+        except Exception as e:
+            logger.warning(f'获取京东服务器时间失败，使用本地时间: {e}')
+            # 如果获取京东时间失败，返回本地时间
+            return self.local_time()
 
     def local_time(self):
         """

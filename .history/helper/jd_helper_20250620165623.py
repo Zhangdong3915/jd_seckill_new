@@ -5,7 +5,6 @@ import os
 import time
 
 from maotai.config import global_config
-from maotai.jd_logger import logger
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
@@ -105,23 +104,7 @@ def get_random_useragent():
 
 
 def wait_some_time():
-    """安全智能等待时间 - 防风控优化"""
-    from datetime import datetime
-
-    now = datetime.now()
-
-    # 秒杀时间段使用适中间隔（防风控）
-    if 11 <= now.hour <= 12 and 55 <= now.minute <= 35:
-        # 秒杀时间：100-500ms随机间隔（安全范围）
-        base_interval = random.randint(100, 500) / 1000
-        # 添加随机波动，模拟人类行为
-        random_factor = random.uniform(0.8, 1.5)
-        time.sleep(base_interval * random_factor)
-    else:
-        # 平时：200-800ms随机间隔
-        base_interval = random.randint(200, 800) / 1000
-        random_factor = random.uniform(0.9, 1.2)
-        time.sleep(base_interval * random_factor)
+    time.sleep(random.randint(100, 300) / 1000)
 
 
 def send_wechat(message):

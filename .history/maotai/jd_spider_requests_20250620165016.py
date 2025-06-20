@@ -347,17 +347,17 @@ class JdSeckill(object):
             logger.info('登录成功')
             return
 
-        try:
-            self.qrlogin.login_by_qrcode()
+        self.qrlogin.login_by_qrcode()
 
-            # 登录成功后，强制设置登录状态为True
-            # 因为二维码登录过程已经验证了用户身份
-            logger.info('二维码登录流程完成，设置登录状态')
-            self.qrlogin.is_login = True
+        # 重新检查登录状态，确保状态同步
+        self.qrlogin.refresh_login_status()
 
-        except Exception as e:
-            logger.error(f'二维码登录过程中出现异常: {e}')
-            self.qrlogin.is_login = False
+        # 如果标准验证失败，尝试简单验证
+        if not self.qrlogin.is_login:
+            logger.info('标准登录验证失败，尝试简单验证...')
+            if self._simple_login_check():
+                logger.info('简单登录验证成功，更新登录状态')
+                self.qrlogin.is_login = True
 
         if self.qrlogin.is_login:
             try:
@@ -417,20 +417,12 @@ class JdSeckill(object):
     @check_login
     def seckill_by_proc_pool(self, work_count=5):
         """
-        多进程进行抢购 - 安全风控版本
+        多进程进行抢购
         work_count：进程数量
         """
-        # 获取风控安全配置
-        safe_config = self.get_safe_seckill_config()
-        work_count = safe_config['max_processes']
-
-        logger.info(f'🛡️ 风控安全模式：{safe_config["risk_level"]}')
-        logger.info(f'🔄 并发进程数：{work_count}个')
-        logger.info(f'⚡ 最大重试次数：{safe_config["max_retries"]}次')
-
         with ProcessPoolExecutor(work_count) as pool:
             for i in range(work_count):
-                pool.submit(self.safe_enhanced_seckill, safe_config)
+                pool.submit(self.seckill)
 
     def _reserve(self):
         """
@@ -457,341 +449,6 @@ class JdSeckill(object):
             except Exception as e:
                 logger.info(f'抢购发生异常，稍后继续执行: {str(e)}')
             wait_some_time()
-
-    def enhanced_seckill(self):
-        """
-        增强的抢购方法 - 极高概率成功
-        """
-        from datetime import datetime
-        import time
-
-        logger.info('🚀 启动增强抢购模式')
-
-        # 预热连接
-        self.preheat_connections()
-
-        # 获取抢购链接
-        try:
-            self.request_seckill_url()
-        except Exception as e:
-            logger.error(f'获取抢购链接失败: {e}')
-            return False
-
-        # 极速抢购循环
-        retry_count = 0
-        max_fast_retries = 200  # 增加到200次快速重试
-        start_time = time.time()
-
-        while retry_count < max_fast_retries and (time.time() - start_time) < 120:  # 最多抢2分钟
-            try:
-                self.request_seckill_checkout_page()
-                result = self.submit_seckill_order()
-                if result:
-                    logger.info('🎉 抢购成功！')
-                    return True
-
-            except Exception as e:
-                error_msg = str(e)
-                wait_time = self.smart_error_handler(error_msg)
-
-                if wait_time > 0:
-                    time.sleep(wait_time)
-
-                retry_count += 1
-
-                # 每50次重试输出一次状态
-                if retry_count % 50 == 0:
-                    logger.info(f'⚡ 已重试 {retry_count} 次，继续抢购...')
-
-        logger.info(f'抢购结束，共重试 {retry_count} 次')
-        return False
-
-    def smart_error_handler(self, error_msg):
-        """
-        智能错误处理 - 根据错误类型返回等待时间
-        """
-        if '很遗憾没有抢到' in error_msg:
-            return 0.01  # 10ms继续抢
-        elif '提交过快' in error_msg:
-            return 0.05  # 50ms稍等
-        elif '系统正在开小差' in error_msg:
-            return 0.02  # 20ms重试
-        elif '网络连接' in error_msg or 'ConnectionError' in error_msg:
-            return 0.1   # 100ms网络重试
-        elif '超时' in error_msg or 'Timeout' in error_msg:
-            return 0.05  # 50ms超时重试
-        elif 'JSON' in error_msg:
-            return 0.02  # 20ms解析错误
-        else:
-            return 0.1   # 100ms其他错误
-
-    def preheat_connections(self):
-        """
-        预热网络连接
-        """
-        try:
-            logger.info('🔥 开始预热网络连接...')
-
-            # 预热主要域名
-            domains = [
-                'https://marathon.jd.com',
-                'https://item.jd.com',
-                'https://cart.jd.com',
-                'https://trade.jd.com'
-            ]
-
-            for domain in domains:
-                try:
-                    self.session.get(f'{domain}/ping', timeout=2)
-                except:
-                    pass  # 忽略预热失败
-
-            logger.info('✅ 网络连接预热完成')
-
-        except Exception as e:
-            logger.warning(f'网络预热失败: {e}')
-
-    def get_safe_seckill_config(self):
-        """
-        获取安全的抢购配置
-        """
-        try:
-            risk_level = global_config.getRaw('config', 'risk_level', fallback='BALANCED')
-            max_processes = int(global_config.getRaw('config', 'max_processes', fallback='8'))
-            max_retries = int(global_config.getRaw('config', 'max_retries', fallback='100'))
-        except:
-            # 默认配置
-            risk_level = 'BALANCED'
-            max_processes = 8
-            max_retries = 100
-
-        # 风控安全配置
-        configs = {
-            'CONSERVATIVE': {
-                'risk_level': 'CONSERVATIVE',
-                'max_processes': min(max_processes, 3),
-                'max_retries': min(max_retries, 50),
-                'retry_interval_range': (0.5, 2.0),
-                'advance_time_limit': 0.2,
-                'description': '保守策略 - 最安全'
-            },
-            'BALANCED': {
-                'risk_level': 'BALANCED',
-                'max_processes': min(max_processes, 8),
-                'max_retries': min(max_retries, 100),
-                'retry_interval_range': (0.1, 1.0),
-                'advance_time_limit': 0.8,
-                'description': '平衡策略 - 推荐'
-            },
-            'AGGRESSIVE': {
-                'risk_level': 'AGGRESSIVE',
-                'max_processes': min(max_processes, 15),
-                'max_retries': min(max_retries, 200),
-                'retry_interval_range': (0.05, 0.5),
-                'advance_time_limit': 1.2,
-                'description': '激进策略 - 高风险'
-            }
-        }
-
-        return configs.get(risk_level, configs['BALANCED'])
-
-    def safe_enhanced_seckill(self, safe_config):
-        """
-        安全增强的抢购方法 - 防风控版本
-        """
-        import time
-        import random
-
-        logger.info(f'🛡️ 启动安全抢购模式: {safe_config["description"]}')
-
-        # 安全预热连接
-        self.safe_preheat_connections()
-
-        # 获取抢购链接
-        try:
-            self.request_seckill_url()
-        except Exception as e:
-            logger.error(f'获取抢购链接失败: {e}')
-            return False
-
-        # 安全抢购循环
-        retry_count = 0
-        max_retries = safe_config['max_retries']
-        retry_range = safe_config['retry_interval_range']
-        start_time = time.time()
-
-        # 风控检测计数器
-        risk_signals = 0
-        last_risk_check = time.time()
-
-        while retry_count < max_retries and (time.time() - start_time) < 180:  # 最多抢3分钟
-            try:
-                # 模拟人类行为间隔
-                if retry_count > 0:
-                    wait_time = self.safe_retry_interval(retry_range, retry_count)
-                    time.sleep(wait_time)
-
-                # 风控检测
-                if time.time() - last_risk_check > 10:  # 每10秒检测一次
-                    if self.detect_risk_control():
-                        risk_signals += 1
-                        logger.warning(f'⚠️ 检测到风控信号 {risk_signals}/3')
-
-                        if risk_signals >= 3:
-                            logger.error('🚨 风控风险过高，停止抢购')
-                            return False
-
-                        # 风控应对策略
-                        self.handle_risk_control(safe_config)
-
-                    last_risk_check = time.time()
-
-                # 执行抢购
-                self.request_seckill_checkout_page()
-                result = self.submit_seckill_order()
-
-                if result:
-                    logger.info('🎉 安全抢购成功！')
-                    return True
-
-            except Exception as e:
-                error_msg = str(e)
-
-                # 检查是否为风控相关错误
-                if self.is_risk_control_error(error_msg):
-                    risk_signals += 1
-                    logger.warning(f'⚠️ 风控相关错误: {error_msg}')
-
-                    if risk_signals >= 2:
-                        # 立即启动风控应对
-                        self.handle_risk_control(safe_config)
-                        risk_signals = 0  # 重置计数器
-
-                retry_count += 1
-
-                # 每20次重试输出一次状态
-                if retry_count % 20 == 0:
-                    logger.info(f'🔄 安全重试 {retry_count}/{max_retries} 次')
-
-        logger.info(f'安全抢购结束，共重试 {retry_count} 次')
-        return False
-
-    def safe_retry_interval(self, retry_range, retry_count):
-        """
-        安全的重试间隔 - 模拟人类行为
-        """
-        import random
-
-        base_min, base_max = retry_range
-
-        # 随机化因子
-        random_factor = random.uniform(0.8, 1.5)
-
-        # 疲劳因子（重试次数越多，间隔越长）
-        fatigue_factor = 1 + (retry_count * 0.01)
-
-        # 计算最终间隔
-        min_interval = base_min * random_factor * fatigue_factor
-        max_interval = base_max * random_factor * fatigue_factor
-
-        return random.uniform(min_interval, max_interval)
-
-    def detect_risk_control(self):
-        """
-        检测风控信号
-        """
-        try:
-            # 简单的风控检测 - 检查登录状态
-            if not self.qrlogin.is_login:
-                return True
-
-            # 可以添加更多检测逻辑
-            # 比如检查特定的响应头、状态码等
-
-            return False
-        except:
-            return False
-
-    def is_risk_control_error(self, error_msg):
-        """
-        判断是否为风控相关错误
-        """
-        risk_keywords = [
-            '验证码', '验证失败', '账户异常', '操作频繁',
-            '请稍后再试', '系统繁忙', '访问受限', '账号限制'
-        ]
-
-        return any(keyword in error_msg for keyword in risk_keywords)
-
-    def handle_risk_control(self, safe_config):
-        """
-        风控应对策略
-        """
-        import time
-        import random
-
-        logger.info('🛡️ 启动风控应对策略...')
-
-        # 立即降低请求频率
-        base_min, base_max = safe_config['retry_interval_range']
-        enhanced_min = base_min * 3
-        enhanced_max = base_max * 2
-
-        # 随机等待
-        wait_time = random.uniform(enhanced_min, enhanced_max)
-        logger.info(f'⏳ 风控冷却等待 {wait_time:.1f} 秒')
-        time.sleep(wait_time)
-
-        # 模拟人类浏览行为
-        self.simulate_human_behavior()
-
-    def simulate_human_behavior(self):
-        """
-        模拟人类浏览行为
-        """
-        import time
-        import random
-
-        try:
-            logger.info('🎭 模拟人类浏览行为...')
-
-            # 模拟访问商品页面
-            time.sleep(random.uniform(1.0, 3.0))
-
-            # 模拟页面停留
-            time.sleep(random.uniform(0.5, 1.5))
-
-            logger.info('✅ 人类行为模拟完成')
-
-        except Exception as e:
-            logger.warning(f'人类行为模拟失败: {e}')
-
-    def safe_preheat_connections(self):
-        """
-        安全的连接预热 - 避免过于激进
-        """
-        try:
-            logger.info('🔥 开始安全预热网络连接...')
-
-            # 预热主要域名（减少数量，避免过于频繁）
-            domains = [
-                'https://marathon.jd.com',
-                'https://item.jd.com'
-            ]
-
-            for i, domain in enumerate(domains):
-                try:
-                    self.session.get(f'{domain}/ping', timeout=3)
-                    # 预热间隔，避免过于频繁
-                    if i < len(domains) - 1:
-                        time.sleep(random.uniform(0.5, 1.0))
-                except:
-                    pass  # 忽略预热失败
-
-            logger.info('✅ 安全网络连接预热完成')
-
-        except Exception as e:
-            logger.warning(f'安全网络预热失败: {e}')
 
     def make_reserve(self):
         """商品预约"""
@@ -1130,98 +787,60 @@ class JdSeckill(object):
     def get_time_status(self):
         """获取当前时间状态，判断应该执行什么操作"""
         from datetime import datetime, timedelta
+        import time
 
         now = datetime.now()
+        current_time_str = now.strftime('%H:%M:%S.%f')[:-3]  # 精确到毫秒
 
-        # 检查是否为工作日（周一到周五）
-        if now.weekday() >= 5:  # 周六(5)和周日(6)
-            # 计算到下周一的时间
-            days_until_monday = 7 - now.weekday()
-            next_monday = now.date() + timedelta(days=days_until_monday)
-            next_workday_10_05 = datetime.combine(next_monday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
-            time_to_next_workday = (next_workday_10_05 - now).total_seconds()
-
-            return {
-                'status': 'weekend',
-                'action': '等待工作日',
-                'time_to_action': time_to_next_workday,
-                'next_action_time': next_workday_10_05,
-                'description': f'周末不抢购，等待下周一10:05开始预约'
-            }
-
-        # 工作日逻辑
-        # 预约时间：10:05
-        # 抢购时间：12:00-12:30
-        reserve_time = datetime.combine(now.date(), datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
+        # 获取配置的时间
         buy_time_str = global_config.getRaw('config', 'buy_time')
         last_purchase_time_str = global_config.getRaw('config', 'last_purchase_time')
 
+        # 解析时间
         buy_time = datetime.strptime(f"{now.date()} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
         last_purchase_time = datetime.strptime(f"{now.date()} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
 
-        # 如果当前时间已经过了最后购买时间，则考虑明天（如果明天是工作日）
+        # 如果当前时间已经过了最后购买时间，则考虑明天的时间
         if now > last_purchase_time:
             tomorrow = now.date() + timedelta(days=1)
-            # 检查明天是否为工作日
-            if tomorrow.weekday() < 5:  # 明天是工作日
-                reserve_time = datetime.combine(tomorrow, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
-                buy_time = datetime.strptime(f"{tomorrow} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
-                last_purchase_time = datetime.strptime(f"{tomorrow} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
-            else:
-                # 明天不是工作日，找到下一个工作日
-                days_to_add = 1
-                while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
-                    days_to_add += 1
-                next_workday = now.date() + timedelta(days=days_to_add)
-                reserve_time = datetime.combine(next_workday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
-                buy_time = datetime.strptime(f"{next_workday} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
-                last_purchase_time = datetime.strptime(f"{next_workday} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
+            buy_time = datetime.strptime(f"{tomorrow} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
+            last_purchase_time = datetime.strptime(f"{tomorrow} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
 
         # 计算时间差
-        time_to_reserve = (reserve_time - now).total_seconds()
         time_to_buy = (buy_time - now).total_seconds()
         time_to_end = (last_purchase_time - now).total_seconds()
 
-        if now < reserve_time:  # 还没到预约时间
+        if time_to_buy > 3600:  # 距离购买时间超过1小时
             return {
                 'status': 'waiting_reserve',
                 'action': '等待预约时间',
-                'time_to_action': time_to_reserve,
-                'next_action_time': reserve_time,
-                'description': f'距离预约时间(10:05)还有 {int(time_to_reserve//3600)}小时{int((time_to_reserve%3600)//60)}分钟'
+                'time_to_action': time_to_buy,
+                'next_action_time': buy_time,
+                'description': f'距离预约时间还有 {int(time_to_buy//3600)}小时{int((time_to_buy%3600)//60)}分钟'
             }
-        elif now < buy_time:  # 预约时间段（10:05-12:00）
+        elif time_to_buy > 0:  # 距离购买时间不到1小时，可以开始预约
             return {
                 'status': 'reserve_time',
                 'action': '执行预约',
                 'time_to_action': time_to_buy,
                 'next_action_time': buy_time,
-                'description': f'预约时间段，距离秒杀(12:00)还有 {int(time_to_buy//60)}分钟{int(time_to_buy%60)}秒'
+                'description': f'预约时间段，距离秒杀还有 {int(time_to_buy//60)}分钟{int(time_to_buy%60)}秒'
             }
-        elif now < last_purchase_time:  # 秒杀时间段（12:00-12:30）
+        elif time_to_end > 0:  # 在秒杀时间段内
             return {
                 'status': 'seckill_time',
                 'action': '执行秒杀',
                 'time_to_action': 0,
                 'next_action_time': buy_time,
-                'description': f'秒杀时间段(12:00-12:30)，距离结束还有 {int(time_to_end//60)}分钟{int(time_to_end%60)}秒'
+                'description': f'秒杀时间段，距离结束还有 {int(time_to_end//60)}分钟{int(time_to_end%60)}秒'
             }
         else:  # 已经过了秒杀时间
-            # 找到下一个工作日
-            tomorrow = now.date() + timedelta(days=1)
-            days_to_add = 1
-            while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
-                days_to_add += 1
-            next_workday = now.date() + timedelta(days=days_to_add)
-            next_reserve_time = datetime.combine(next_workday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
-            time_to_next = (next_reserve_time - now).total_seconds()
-
             return {
                 'status': 'finished',
-                'action': '等待下个工作日',
-                'time_to_action': time_to_next,
-                'next_action_time': next_reserve_time,
-                'description': f'今日抢购已结束，等待下个工作日10:05预约'
+                'action': '等待明天',
+                'time_to_action': 86400 + time_to_buy,  # 明天的时间
+                'next_action_time': buy_time,
+                'description': '今日秒杀已结束，等待明天'
             }
 
     def auto_mode(self):

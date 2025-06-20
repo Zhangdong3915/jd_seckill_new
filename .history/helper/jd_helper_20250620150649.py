@@ -5,7 +5,6 @@ import os
 import time
 
 from maotai.config import global_config
-from maotai.jd_logger import logger
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
@@ -62,39 +61,9 @@ USER_AGENTS = [
 
 
 def parse_json(s):
-    """
-    解析JSON字符串，支持JSONP格式
-    """
-    try:
-        # 首先尝试直接解析JSON
-        return json.loads(s)
-    except json.JSONDecodeError:
-        # 如果失败，尝试提取JSONP中的JSON部分
-        if '(' in s and ')' in s:
-            # JSONP格式: callback({"key": "value"})
-            start = s.find('(') + 1
-            end = s.rfind(')')
-            if start > 0 and end > start:
-                json_str = s[start:end]
-                try:
-                    return json.loads(json_str)
-                except json.JSONDecodeError:
-                    pass
-
-        # 尝试原始方法：查找第一个{到最后一个}
-        begin = s.find('{')
-        end = s.rfind('}') + 1
-        if begin >= 0 and end > begin:
-            try:
-                return json.loads(s[begin:end])
-            except json.JSONDecodeError:
-                pass
-
-        # 如果都失败了，抛出异常并包含更多信息
-        raise json.JSONDecodeError(
-            f"无法解析JSON，内容类型可能不正确。内容前100字符: {s[:100]}",
-            s, 0
-        )
+    begin = s.find('{')
+    end = s.rfind('}') + 1
+    return json.loads(s[begin:end])
 
 
 def get_random_useragent():
@@ -105,61 +74,20 @@ def get_random_useragent():
 
 
 def wait_some_time():
-    """安全智能等待时间 - 防风控优化"""
-    from datetime import datetime
-
-    now = datetime.now()
-
-    # 秒杀时间段使用适中间隔（防风控）
-    if 11 <= now.hour <= 12 and 55 <= now.minute <= 35:
-        # 秒杀时间：100-500ms随机间隔（安全范围）
-        base_interval = random.randint(100, 500) / 1000
-        # 添加随机波动，模拟人类行为
-        random_factor = random.uniform(0.8, 1.5)
-        time.sleep(base_interval * random_factor)
-    else:
-        # 平时：200-800ms随机间隔
-        base_interval = random.randint(200, 800) / 1000
-        random_factor = random.uniform(0.9, 1.2)
-        time.sleep(base_interval * random_factor)
+    time.sleep(random.randint(100, 300) / 1000)
 
 
 def send_wechat(message):
     """推送信息到微信"""
-    sckey = global_config.getRaw('messenger', 'sckey')
-
-    # 判断是新版还是旧版Server酱
-    if sckey.startswith('SCT'):
-        # 新版Server酱Turbo API
-        url = 'https://sctapi.ftqq.com/{}.send'.format(sckey)
-    else:
-        # 旧版Server酱API
-        url = 'http://sc.ftqq.com/{}.send'.format(sckey)
-
+    url = 'http://sc.ftqq.com/{}.send'.format(global_config.getRaw('messenger', 'sckey'))
     payload = {
-        "text": '京东秒杀通知',
+        "text": '抢购结果',
         "desp": message
     }
     headers = {
         'User-Agent': global_config.getRaw('config', 'DEFAULT_USER_AGENT')
     }
-
-    try:
-        resp = requests.get(url, params=payload, headers=headers, timeout=10)
-        logger.info(f'微信推送发送完成，状态码: {resp.status_code}')
-        if resp.status_code == 200:
-            try:
-                result = resp.json()
-                if result.get('code') == 0:
-                    logger.info('微信推送发送成功')
-                else:
-                    logger.warning(f'微信推送发送失败: {result.get("message", "未知错误")}')
-            except:
-                logger.info('微信推送已发送，但响应格式异常')
-        else:
-            logger.warning(f'微信推送发送失败，HTTP状态码: {resp.status_code}')
-    except Exception as e:
-        logger.error(f'微信推送发送异常: {e}')
+    requests.get(url, params=payload, headers=headers)
 
 
 def response_status(resp):
