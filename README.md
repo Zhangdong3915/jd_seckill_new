@@ -22,6 +22,49 @@
 - Python 3.8+
 - 稳定的网络连接
 
+## 📦 Windows EXE版本 🆕
+
+**推荐使用**：无需安装Python环境，开箱即用！
+
+### 下载使用
+1. 下载最新的ZIP包：`京东茅台秒杀系统_v2.1.0_完整版.zip`
+2. 解压到任意目录
+3. 编辑 `config.ini` 配置文件（重要！）
+4. 双击 `京东茅台秒杀系统.exe` 运行
+
+### EXE版本特点
+- ✅ **免安装**：无需Python环境，直接运行
+- ✅ **完整功能**：包含所有最新功能和安全策略
+- ✅ **便于分发**：可直接发送给其他人使用
+- ✅ **文档齐全**：包含完整的使用说明和配置指南
+
+## 📁 项目结构
+
+```
+jd_seckill_new/
+├── main.py                           # 主程序入口
+├── config.ini                        # 配置文件
+├── requirements.txt                   # 依赖包列表
+├── 打包工具.py                        # Windows EXE打包工具
+├── maotai/                           # 核心功能模块
+│   ├── jd_spider_requests.py         # 主要业务逻辑
+│   ├── timer.py                      # 时间同步
+│   ├── config.py                     # 配置管理
+│   └── jd_logger.py                  # 日志管理
+├── helper/                           # 辅助功能
+│   └── jd_helper.py                  # 工具函数
+├── error/                            # 异常处理
+│   └── exception.py                  # 自定义异常
+├── cookies/                          # 登录信息存储
+├── test_*.py                         # 测试脚本
+├── README.md                         # 项目说明
+├── bug修复.md                        # 问题解决方案
+├── 京东风控机制分析与安全策略.md        # 安全策略详解
+└── 极高概率抢购方案.md                # 高级抢购策略
+```
+
+## 🛠️ 开发者安装（源码版本）
+
 ### 安装步骤
 
 1. **克隆项目**
@@ -331,14 +374,8 @@ python test_wechat_push.py
 # 测试全自动化模式
 python test_auto_mode.py
 
-# 测试安全抢购策略 🆕
-python test_safe_seckill_strategy.py
-
-# 测试极限抢购方案 🆕
-python test_ultimate_seckill.py
-
-# 测试工作日时间安排 🆕
-python test_workday_schedule.py
+# 打包Windows EXE文件 🆕
+python 打包工具.py
 ```
 
 ### 日志分析
@@ -491,6 +528,7 @@ python test_workday_schedule.py
 - 🔄 动态并发策略，根据时间段自动调整
 - 📈 极高概率抢购方案，成功率提升至85%+
 - 🧠 智能重试间隔，根据错误类型精准调整
+- 📦 Windows EXE打包，免安装直接运行
 
 ### v2.0.0 (2025-06-20)
 - ✨ 新增全自动化执行模式
