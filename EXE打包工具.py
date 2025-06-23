@@ -10,7 +10,37 @@ import sys
 import shutil
 import zipfile
 import subprocess
+import re
 from datetime import datetime
+
+def get_version_from_git():
+    """从Git标签获取版本号"""
+    try:
+        # 首先尝试获取当前标签
+        result = subprocess.run(['git', 'describe', '--exact-match', '--tags'],
+                              capture_output=True, text=True)
+
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"检测到Git标签: {version}")
+            return version
+
+        # 如果没有当前标签，获取最新标签
+        result = subprocess.run(['git', 'describe', '--tags', '--abbrev=0'],
+                              capture_output=True, text=True)
+
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"使用最新Git标签: {version}")
+            return version
+
+        # 如果没有任何标签，使用默认版本
+        print("未找到Git标签，使用默认版本")
+        return "v2.1.1"
+
+    except Exception as e:
+        print(f"获取Git版本号失败: {e}")
+        return "v2.1.1"
 
 def check_pyinstaller():
     """检查PyInstaller是否已安装"""
@@ -196,7 +226,8 @@ def create_distribution_package():
 
 def create_usage_guide(target_dir):
     """创建使用说明文件"""
-    usage_content = """# 京东茅台秒杀系统 - 使用说明
+    version = get_version_from_git()
+    usage_content = f"""# 京东茅台秒杀系统 - 使用说明
 
 ## 🚀 快速开始
 
@@ -241,9 +272,9 @@ def create_usage_guide(target_dir):
 - 京东风控机制分析与安全策略.md - 安全策略详解
 
 ---
-版本: v2.1.1
+版本: {version}
 构建时间: {build_time}
-""".format(build_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+""".format(version=version, build_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     
     with open(os.path.join(target_dir, "使用说明.txt"), 'w', encoding='utf-8') as f:
         f.write(usage_content)
@@ -258,8 +289,9 @@ def create_zip_package():
         return False
     
     # 创建ZIP文件名
+    version = get_version_from_git()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    zip_filename = f"京东茅台秒杀系统_v2.1.1_完整版_{timestamp}.zip"
+    zip_filename = f"京东茅台秒杀系统_{version}_完整版_{timestamp}.zip"
     
     try:
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
