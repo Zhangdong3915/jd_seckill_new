@@ -1421,9 +1421,9 @@ class JdSeckill(object):
                         try:
                             self.safe_reserve()
                             reserve_completed = True
-                            # 预约成功通知已在make_reserve方法中发送
+                            self.send_notification("预约成功", "商品预约已完成，等待秒杀时间", "success")
                         except Exception as e:
-                            # 预约失败通知已在make_reserve方法中发送
+                            self.send_notification("预约失败", f"预约执行失败: {e}", "error")
                             time.sleep(30)
                     else:
                         print("✅ 预约已完成，等待秒杀时间")
@@ -1435,22 +1435,9 @@ class JdSeckill(object):
                         try:
                             self.safe_seckill()
                             seckill_completed = True
-                            # 秒杀成功/失败通知已在submit_seckill_order方法中发送
+                            self.send_notification("秒杀完成", "秒杀程序已执行完成", "success")
                         except Exception as e:
-                            # 发送秒杀异常通知
-                            from datetime import datetime
-                            notification_data = {
-                                'type': '抢购通知',
-                                'icon': '⚠️',
-                                'title': '秒杀异常',
-                                'summary': f'秒杀执行过程中发生异常: {str(e)}',
-                                'seckill_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                'seckill_status': '异常',
-                                'seckill_result': '执行异常',
-                                'seckill_success': False,
-                                'error_message': str(e)
-                            }
-                            self.send_detailed_notification(notification_data)
+                            self.send_notification("秒杀异常", f"秒杀执行失败: {e}", "error")
                             time.sleep(10)
                     else:
                         print("✅ 秒杀已完成")
@@ -1565,8 +1552,8 @@ class JdSeckill(object):
             # 生成markdown格式消息
             markdown_message = self._generate_markdown_message(notification_data)
 
-            # 控制台通知（移除emoji避免编码问题）
-            print(f"\n{notification_data.get('title', '通知')}")
+            # 控制台通知
+            print(f"\n{notification_data.get('icon', 'ℹ️')} {notification_data.get('title', '通知')}")
             print(f"   {notification_data.get('summary', '')}")
 
             # 微信通知（如果启用）
@@ -1591,9 +1578,9 @@ class JdSeckill(object):
 
         # 基础信息
         message_parts = [
-            f"# 京东茅台秒杀系统通知",
+            f"# 🎯 京东茅台秒杀系统通知",
             f"",
-            f"## 基本信息",
+            f"## 📋 基本信息",
             f"- **通知时间**: {current_time}",
             f"- **通知类型**: {data.get('type', '系统通知')}",
             f"- **用户账号**: {username}",
@@ -1604,7 +1591,7 @@ class JdSeckill(object):
         # 根据通知类型添加具体内容
         if data.get('type') == '预约通知':
             message_parts.extend([
-                f"## 预约详情",
+                f"## 📅 预约详情",
                 f"- **预约时间**: {data.get('reserve_time', '未知')}",
                 f"- **预约账号**: {username}",
                 f"- **预约状态**: {data.get('reserve_status', '未知')}",
@@ -1614,7 +1601,7 @@ class JdSeckill(object):
 
             if data.get('reserve_success'):
                 message_parts.extend([
-                    f"## 预约成功",
+                    f"## ✅ 预约成功",
                     f"恭喜！您已成功预约商品，获得抢购资格。",
                     f"",
                     f"**下一步操作**:",
@@ -1625,7 +1612,7 @@ class JdSeckill(object):
                 ])
             else:
                 message_parts.extend([
-                    f"## 预约失败",
+                    f"## ❌ 预约失败",
                     f"很遗憾，预约未成功。",
                     f"",
                     f"**失败原因**: {data.get('error_message', '未知错误')}",
@@ -1639,7 +1626,7 @@ class JdSeckill(object):
 
         elif data.get('type') == '抢购通知':
             message_parts.extend([
-                f"## 抢购详情",
+                f"## 🔥 抢购详情",
                 f"- **抢购时间**: {data.get('seckill_time', '未知')}",
                 f"- **抢购账号**: {username}",
                 f"- **抢购状态**: {data.get('seckill_status', '未知')}",
@@ -1649,16 +1636,16 @@ class JdSeckill(object):
 
             if data.get('seckill_success'):
                 message_parts.extend([
-                    f"## 抢购成功！",
+                    f"## 🎉 抢购成功！",
                     f"恭喜！您已成功抢到商品！",
                     f"",
-                    f"### 订单信息",
+                    f"### 📦 订单信息",
                     f"- **订单号**: `{data.get('order_id', '未知')}`",
                     f"- **订单金额**: **{data.get('total_money', '未知')}**",
                     f"- **下单时间**: {data.get('order_time', current_time)}",
                     f"",
-                    f"### 付款信息",
-                    f"**重要提醒：请在30分钟内完成付款！**",
+                    f"### 💳 付款信息",
+                    f"**⚠️ 重要提醒：请在30分钟内完成付款！**",
                     f"",
                     f"**付款链接**: [点击这里付款]({data.get('pay_url', '#')})",
                     f"",
@@ -1668,13 +1655,13 @@ class JdSeckill(object):
                     f"3. 确认订单信息",
                     f"4. 选择支付方式完成付款",
                     f"",
-                    f"### 手机端付款",
+                    f"### 📱 手机端付款",
                     f"您也可以打开京东APP，在\"我的订单\"中找到该订单进行付款。",
                     f""
                 ])
             else:
                 message_parts.extend([
-                    f"## 抢购失败",
+                    f"## 😔 抢购失败",
                     f"很遗憾，本次抢购未成功。",
                     f"",
                     f"**失败原因**: {data.get('error_message', '未知错误')}",
@@ -1689,7 +1676,7 @@ class JdSeckill(object):
 
         elif data.get('type') == '登录通知':
             message_parts.extend([
-                f"## 登录状态变更",
+                f"## 🔐 登录状态变更",
                 f"- **变更时间**: {current_time}",
                 f"- **变更类型**: {data.get('login_action', '未知')}",
                 f"- **当前状态**: {data.get('login_status', '未知')}",
@@ -1698,7 +1685,7 @@ class JdSeckill(object):
 
             if data.get('login_success'):
                 message_parts.extend([
-                    f"## 登录成功",
+                    f"## ✅ 登录成功",
                     f"用户已成功登录京东账号。",
                     f"",
                     f"**账号信息**:",
@@ -1713,7 +1700,7 @@ class JdSeckill(object):
                 ])
             else:
                 message_parts.extend([
-                    f"## 需要重新登录",
+                    f"## ⚠️ 需要重新登录",
                     f"检测到登录状态已失效，需要重新登录。",
                     f"",
                     f"**失效原因**: {data.get('logout_reason', '登录过期')}",
@@ -1730,7 +1717,7 @@ class JdSeckill(object):
         message_parts.extend([
             f"---",
             f"",
-            f"## 系统信息",
+            f"## 📊 系统信息",
             f"- **程序版本**: v2.1.1",
             f"- **运行模式**: 全自动化模式",
             f"- **通知时间**: {current_time}",

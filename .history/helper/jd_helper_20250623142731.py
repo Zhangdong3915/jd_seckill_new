@@ -191,93 +191,30 @@ def save_image(resp, image_file):
 def close_image_windows():
     """
     关闭二维码图片窗口
-    专门针对qr_code.png文件的窗口进行关闭
     """
     import subprocess
     import time
-    import psutil
 
     try:
         if os.name == "nt":  # Windows
-            print("正在关闭二维码窗口...")
+            # 关闭所有显示qr_code.png的窗口
+            subprocess.run([
+                'taskkill', '/F', '/IM', 'Microsoft.Photos.exe'
+            ], capture_output=True, check=False)
 
-            # 方法1: 使用PowerShell查找并关闭包含qr_code.png的窗口
-            try:
-                # 查找包含qr_code.png的窗口并关闭
-                powershell_cmd = '''
-                Get-Process | Where-Object {$_.MainWindowTitle -like "*qr_code*"} | Stop-Process -Force
-                '''
-                subprocess.run([
-                    'powershell', '-Command', powershell_cmd
-                ], capture_output=True, check=False, timeout=5)
-                print("已尝试通过窗口标题关闭二维码窗口")
-            except Exception as e:
-                print(f"PowerShell方法失败: {e}")
-
-            # 方法2: 关闭常见的图片查看器进程
+            # 也尝试关闭其他可能的图片查看器
             image_viewers = [
-                'Microsoft.Photos.exe',  # Windows 10/11 照片应用
-                'PhotosApp.exe',         # 照片应用的另一个名称
-                'Photos.exe',            # 简化名称
-                'mspaint.exe',           # 画图
-                'WindowsPhotoViewer.exe', # Windows照片查看器
-                'dllhost.exe',           # 有时照片查看器使用这个进程
-                'IrfanView.exe',         # IrfanView
-                'HoneyView.exe',         # HoneyView
-                'nomacs.exe',            # nomacs
-                'XnView.exe'             # XnView
+                'mspaint.exe',
+                'PhotosApp.exe',
+                'WindowsPhotoViewer.exe',
+                'IrfanView.exe',
+                'HoneyView.exe'
             ]
 
-            closed_any = False
             for viewer in image_viewers:
-                try:
-                    result = subprocess.run([
-                        'taskkill', '/F', '/IM', viewer
-                    ], capture_output=True, check=False, timeout=3)
-
-                    if result.returncode == 0:
-                        print(f"已关闭进程: {viewer}")
-                        closed_any = True
-                except Exception as e:
-                    continue
-
-            # 方法3: 使用psutil查找并关闭相关进程
-            try:
-                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                    try:
-                        # 检查进程命令行是否包含qr_code.png
-                        if proc.info['cmdline']:
-                            cmdline = ' '.join(proc.info['cmdline']).lower()
-                            if 'qr_code.png' in cmdline or 'qr_code' in cmdline:
-                                proc.terminate()
-                                print(f"已终止包含qr_code的进程: {proc.info['name']} (PID: {proc.info['pid']})")
-                                closed_any = True
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        continue
-            except Exception as e:
-                print(f"psutil方法失败: {e}")
-
-            # 方法4: 删除并重新创建qr_code.png文件来强制关闭
-            try:
-                qr_file = "qr_code.png"
-                if os.path.exists(qr_file):
-                    # 先尝试重命名文件，这会强制关闭打开它的程序
-                    temp_file = "qr_code_temp.png"
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                    os.rename(qr_file, temp_file)
-                    time.sleep(0.5)
-                    # 删除临时文件
-                    os.remove(temp_file)
-                    print("已通过文件操作强制关闭二维码窗口")
-                    closed_any = True
-            except Exception as e:
-                print(f"文件操作方法失败: {e}")
-
-            if closed_any:
-                print("二维码窗口已自动关闭")
-            else:
-                print("未找到需要关闭的二维码窗口，可能已经关闭")
+                subprocess.run([
+                    'taskkill', '/F', '/IM', viewer
+                ], capture_output=True, check=False)
 
         else:  # Linux/Mac
             if os.uname()[0] == "Linux":
@@ -287,7 +224,8 @@ def close_image_windows():
                     subprocess.run(['pkill', 'eog'], capture_output=True, check=False)
             else:  # Mac
                 subprocess.run(['pkill', 'Preview'], capture_output=True, check=False)
-            print("二维码窗口已自动关闭")
+
+        print("二维码窗口已自动关闭")
 
     except Exception as e:
         print(f"关闭二维码窗口时发生异常: {e}")

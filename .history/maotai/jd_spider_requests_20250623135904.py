@@ -134,36 +134,14 @@ class QrLogin:
         通过访问用户订单列表页进行判断：若未登录，将会重定向到登陆页面。
         :return: cookies是否有效 True/False
         """
-        # 首先检查是否有关键登录Cookie（包括新旧版本的Cookie名称）
-        cookies = self.session.cookies
-        key_cookies = ['pt_key', 'pt_pin', 'pin', 'pinId', 'unick']
-
-        has_login_cookies = any(cookie_name in cookies for cookie_name in key_cookies)
-        logger.info(f'关键登录Cookie检查: {has_login_cookies}')
-
-        # 如果有pin和pinId，认为登录有效（新版本的Cookie）
-        if 'pin' in cookies and 'pinId' in cookies:
-            logger.info('发现新版本登录Cookie (pin + pinId)，认为登录有效')
-            return True
-
-        # 如果有传统的pt_key和pt_pin，也认为登录有效
-        if 'pt_key' in cookies and 'pt_pin' in cookies:
-            logger.info('发现传统登录Cookie (pt_key + pt_pin)，认为登录有效')
-            return True
-
-        if not has_login_cookies:
-            logger.info('缺少关键登录Cookie，用户未登录')
-            return False
-
-        # 如果有关键Cookie，尝试访问订单页面验证
         url = 'https://order.jd.com/center/list.action'
         payload = {
             'rid': str(int(time.time() * 1000)),
         }
         try:
-            resp = self.session.get(url=url, params=payload, allow_redirects=False, timeout=10)
-            logger.info(f'登录验证响应状态: {resp.status_code}')
-            logger.info(f'登录验证响应头: {resp.headers.get("Location", "无重定向")}')
+            resp = self.session.get(url=url, params=payload, allow_redirects=False)
+            logger.debug(f'登录验证响应状态: {resp.status_code}')
+            logger.debug(f'登录验证响应头: {resp.headers.get("Location", "无重定向")}')
 
             # 检查是否被重定向到登录页面
             if resp.status_code == 302:
@@ -171,23 +149,14 @@ class QrLogin:
                 if 'passport.jd.com' in location or 'login' in location.lower():
                     logger.info('检测到重定向到登录页面，用户未登录')
                     return False
-                else:
-                    # 其他重定向可能是正常的
-                    logger.info('检测到非登录重定向，认为登录有效')
-                    return True
             elif resp.status_code == requests.codes.OK:
-                logger.info('订单页面访问成功，用户已登录')
-                return True
-            else:
-                # 其他状态码，如果有关键Cookie就认为登录有效
-                logger.warning(f'订单页面返回异常状态码: {resp.status_code}，但有关键Cookie，认为登录有效')
+                # 检查页面内容是否包含登录相关信息
+                if '登录' in resp.text or 'login' in resp.text.lower():
+                    logger.info('页面包含登录信息，用户可能未登录')
+                    return False
                 return True
         except Exception as e:
-            logger.error(f"验证cookies时发生异常: {e}")
-            # 如果有关键Cookie但网络异常，保守地认为登录有效
-            if has_login_cookies:
-                logger.info('网络异常但有关键Cookie，保守地认为登录有效')
-                return True
+            logger.error(f"验证cookies是否有效发生异常: {e}")
         return False
 
     def _get_login_page(self):
@@ -274,38 +243,12 @@ class QrLogin:
         if not response_status(resp):
             return False
 
-        # 检查Session中的Cookie数量
-        cookie_count = len(self.session.cookies)
-        logger.debug(f'票据验证后Session Cookie数量: {cookie_count}')
-
         resp_json = json.loads(resp.text)
         if resp_json['returnCode'] == 0:
-            logger.info('票据验证成功')
-
-            # 票据验证成功后，需要访问登录完成页面来获取完整的登录Cookie
-            self._complete_login()
-
             return True
         else:
-            logger.info(f'票据验证失败: {resp_json}')
+            logger.info(resp_json)
             return False
-
-    def _complete_login(self):
-        """
-        完成登录流程，获取完整的登录Cookie
-        """
-        try:
-            # 访问京东主页以确保登录状态完整
-            headers = {
-                'User-Agent': self.spider_session.get_user_agent(),
-                'Referer': 'https://passport.jd.com/new/login.aspx',
-            }
-
-            self.session.get(url='https://www.jd.com/', headers=headers, allow_redirects=True, timeout=10)
-            logger.debug('登录完成流程执行完毕')
-
-        except Exception as e:
-            logger.warning(f'完成登录流程时发生异常: {e}')
 
     def login_by_qrcode(self):
         """
@@ -334,14 +277,6 @@ class QrLogin:
             raise SKException('二维码信息校验失败')
 
         self.refresh_login_status()
-
-        # 登录成功后自动关闭二维码窗口
-        if self.is_login:
-            try:
-                from helper.jd_helper import close_image_windows
-                close_image_windows()
-            except Exception as e:
-                logger.warning(f'关闭二维码窗口失败: {e}')
 
         logger.info('二维码登录成功')
 
@@ -408,44 +343,41 @@ class JdSeckill(object):
         :return:
         """
         if self.qrlogin.is_login:
-            print("用户已登录")
+            print("✅ 用户已登录")
             logger.info('登录成功')
             return
 
-        self.qrlogin.login_by_qrcode()
+        try:
+            self.qrlogin.login_by_qrcode()
+
+            # 登录成功后，强制设置登录状态为True
+            # 因为二维码登录过程已经验证了用户身份
+            logger.info('二维码登录流程完成，设置登录状态')
+            self.qrlogin.is_login = True
+
+        except Exception as e:
+            logger.error(f'二维码登录过程中出现异常: {e}')
+            self.qrlogin.is_login = False
 
         if self.qrlogin.is_login:
-            # 登录成功后自动关闭二维码窗口
             try:
-                from helper.jd_helper import close_image_windows
-                close_image_windows()
+                self.nick_name = self.get_username()
+                self.spider_session.save_cookies_to_local(self.nick_name)
+                print("\n" + "="*60)
+                print("✅ 登录成功")
+                print("="*60)
+                print(f"欢迎，{self.nick_name}！")
+                print("程序将继续执行...")
+                print("="*60)
             except Exception as e:
-                logger.warning(f'关闭二维码窗口失败: {e}')
-
-            self.nick_name = self.get_username()
-            self.spider_session.save_cookies_to_local(self.nick_name)
-
-            # 发送登录成功通知
-            from datetime import datetime
-            notification_data = {
-                'type': '登录通知',
-                'icon': '✅',
-                'title': '登录成功',
-                'summary': f'用户 {self.nick_name} 已成功登录',
-                'login_action': '用户登录',
-                'login_status': '已登录',
-                'login_success': True
-            }
-            self.send_detailed_notification(notification_data)
-
-            print("\n" + "="*60)
-            print("登录成功")
-            print("="*60)
-            print(f"欢迎，{self.nick_name}！")
-            print("程序将继续执行...")
-            print("="*60)
+                logger.warning(f'获取用户信息失败，但登录状态正常: {e}')
+                print("\n" + "="*60)
+                print("✅ 登录成功")
+                print("="*60)
+                print("程序将继续执行...")
+                print("="*60)
         else:
-            print("\n登录失败，请重试")
+            print("\n❌ 登录失败，请重试")
             raise SKException("二维码登录失败！")
 
     def check_login(func):
@@ -920,38 +852,12 @@ class JdSeckill(object):
             try:
                 self.session.get(url='https:' + reserve_url)
                 logger.info('预约成功，已获得抢购资格 / 您已成功预约过了，无需重复预约')
-
-                # 发送详细的预约成功通知
-                from datetime import datetime
-                notification_data = {
-                    'type': '预约通知',
-                    'icon': '✅',
-                    'title': '预约成功',
-                    'summary': '商品预约已完成，获得抢购资格',
-                    'reserve_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'reserve_status': '成功',
-                    'reserve_result': '已获得抢购资格',
-                    'reserve_success': True
-                }
-                self.send_detailed_notification(notification_data)
+                if global_config.getRaw('messenger', 'enable') == 'true':
+                    success_message = "预约成功，已获得抢购资格 / 您已成功预约过了，无需重复预约"
+                    send_wechat(success_message)
                 break
             except Exception as e:
                 logger.error('预约失败正在重试...')
-
-                # 发送预约失败通知
-                from datetime import datetime
-                notification_data = {
-                    'type': '预约通知',
-                    'icon': '❌',
-                    'title': '预约失败',
-                    'summary': '预约执行失败，系统将自动重试',
-                    'reserve_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'reserve_status': '失败',
-                    'reserve_result': '预约未成功',
-                    'reserve_success': False,
-                    'error_message': str(e)
-                }
-                self.send_detailed_notification(notification_data)
 
     def get_username(self):
         """获取用户信息"""
@@ -1174,46 +1080,15 @@ class JdSeckill(object):
             total_money = resp_json.get('totalMoney')
             pay_url = 'https:' + resp_json.get('pcUrl')
             logger.info('抢购成功，订单号:{}, 总价:{}, 电脑端付款链接:{}'.format(order_id, total_money, pay_url))
-
-            # 发送详细的抢购成功通知
-            from datetime import datetime
-            notification_data = {
-                'type': '抢购通知',
-                'icon': '🎉',
-                'title': '抢购成功！',
-                'summary': f'恭喜！成功抢到商品，订单号: {order_id}',
-                'seckill_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'seckill_status': '成功',
-                'seckill_result': '抢购成功',
-                'seckill_success': True,
-                'order_id': order_id,
-                'total_money': total_money,
-                'pay_url': pay_url,
-                'order_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            self.send_detailed_notification(notification_data)
+            if global_config.getRaw('messenger', 'enable') == 'true':
+                success_message = "抢购成功，订单号:{}, 总价:{}, 电脑端付款链接:{}".format(order_id, total_money, pay_url)
+                send_wechat(success_message)
             return True
         else:
             logger.info('抢购失败，返回信息:{}'.format(resp_json))
-
-            # 发送详细的抢购失败通知
-            from datetime import datetime
-            error_message = resp_json.get('errorMessage', '未知错误')
-            error_code = resp_json.get('resultCode', '未知')
-
-            notification_data = {
-                'type': '抢购通知',
-                'icon': '😔',
-                'title': '抢购失败',
-                'summary': f'本次抢购未成功: {error_message}',
-                'seckill_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'seckill_status': '失败',
-                'seckill_result': '抢购失败',
-                'seckill_success': False,
-                'error_message': error_message,
-                'error_code': error_code
-            }
-            self.send_detailed_notification(notification_data)
+            if global_config.getRaw('messenger', 'enable') == 'true':
+                error_message = '抢购失败，返回信息:{}'.format(resp_json)
+                send_wechat(error_message)
             return False
 
     def auto_login_maintenance(self):
@@ -1229,21 +1104,6 @@ class JdSeckill(object):
 
             if old_status and not self.qrlogin.is_login:
                 logger.warning('检测到登录状态失效，开始自动重新登录')
-
-                # 发送登录失效通知
-                from datetime import datetime
-                notification_data = {
-                    'type': '登录通知',
-                    'icon': '⚠️',
-                    'title': '需要重新登录',
-                    'summary': '检测到登录状态已失效，需要重新登录',
-                    'login_action': '登录失效',
-                    'login_status': '未登录',
-                    'login_success': False,
-                    'logout_reason': '登录状态过期'
-                }
-                self.send_detailed_notification(notification_data)
-
                 print("\n" + "="*60)
                 print("🔄 登录状态失效，自动重新登录")
                 print("="*60)
@@ -1421,9 +1281,9 @@ class JdSeckill(object):
                         try:
                             self.safe_reserve()
                             reserve_completed = True
-                            # 预约成功通知已在make_reserve方法中发送
+                            self.send_notification("预约成功", "商品预约已完成，等待秒杀时间", "success")
                         except Exception as e:
-                            # 预约失败通知已在make_reserve方法中发送
+                            self.send_notification("预约失败", f"预约执行失败: {e}", "error")
                             time.sleep(30)
                     else:
                         print("✅ 预约已完成，等待秒杀时间")
@@ -1435,22 +1295,9 @@ class JdSeckill(object):
                         try:
                             self.safe_seckill()
                             seckill_completed = True
-                            # 秒杀成功/失败通知已在submit_seckill_order方法中发送
+                            self.send_notification("秒杀完成", "秒杀程序已执行完成", "success")
                         except Exception as e:
-                            # 发送秒杀异常通知
-                            from datetime import datetime
-                            notification_data = {
-                                'type': '抢购通知',
-                                'icon': '⚠️',
-                                'title': '秒杀异常',
-                                'summary': f'秒杀执行过程中发生异常: {str(e)}',
-                                'seckill_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                'seckill_status': '异常',
-                                'seckill_result': '执行异常',
-                                'seckill_success': False,
-                                'error_message': str(e)
-                            }
-                            self.send_detailed_notification(notification_data)
+                            self.send_notification("秒杀异常", f"秒杀执行失败: {e}", "error")
                             time.sleep(10)
                     else:
                         print("✅ 秒杀已完成")
@@ -1558,187 +1405,6 @@ class JdSeckill(object):
 
         except Exception as e:
             logger.error(f'发送通知失败: {e}')
-
-    def send_detailed_notification(self, notification_data):
-        """发送详细的markdown格式通知"""
-        try:
-            # 生成markdown格式消息
-            markdown_message = self._generate_markdown_message(notification_data)
-
-            # 控制台通知（移除emoji避免编码问题）
-            print(f"\n{notification_data.get('title', '通知')}")
-            print(f"   {notification_data.get('summary', '')}")
-
-            # 微信通知（如果启用）
-            if global_config.getRaw('messenger', 'enable') == 'true':
-                send_wechat(markdown_message)
-
-            # 日志记录
-            logger.info(f"详细通知: {notification_data.get('title', '通知')}")
-
-        except Exception as e:
-            logger.error(f'发送详细通知失败: {e}')
-
-    def _generate_markdown_message(self, data):
-        """生成markdown格式的通知消息"""
-        from datetime import datetime
-
-        # 获取当前时间
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        # 获取用户信息
-        username = self.nick_name or "未知用户"
-
-        # 基础信息
-        message_parts = [
-            f"# 京东茅台秒杀系统通知",
-            f"",
-            f"## 基本信息",
-            f"- **通知时间**: {current_time}",
-            f"- **通知类型**: {data.get('type', '系统通知')}",
-            f"- **用户账号**: {username}",
-            f"- **商品信息**: {self.get_sku_title() if hasattr(self, 'get_sku_title') else '未知商品'}",
-            f""
-        ]
-
-        # 根据通知类型添加具体内容
-        if data.get('type') == '预约通知':
-            message_parts.extend([
-                f"## 预约详情",
-                f"- **预约时间**: {data.get('reserve_time', '未知')}",
-                f"- **预约账号**: {username}",
-                f"- **预约状态**: {data.get('reserve_status', '未知')}",
-                f"- **预约结果**: {data.get('reserve_result', '未知')}",
-                f""
-            ])
-
-            if data.get('reserve_success'):
-                message_parts.extend([
-                    f"## 预约成功",
-                    f"恭喜！您已成功预约商品，获得抢购资格。",
-                    f"",
-                    f"**下一步操作**:",
-                    f"- 请等待秒杀时间开始",
-                    f"- 系统将自动执行抢购",
-                    f"- 请保持网络连接稳定",
-                    f""
-                ])
-            else:
-                message_parts.extend([
-                    f"## 预约失败",
-                    f"很遗憾，预约未成功。",
-                    f"",
-                    f"**失败原因**: {data.get('error_message', '未知错误')}",
-                    f"",
-                    f"**建议操作**:",
-                    f"- 检查网络连接",
-                    f"- 确认登录状态",
-                    f"- 等待系统自动重试",
-                    f""
-                ])
-
-        elif data.get('type') == '抢购通知':
-            message_parts.extend([
-                f"## 抢购详情",
-                f"- **抢购时间**: {data.get('seckill_time', '未知')}",
-                f"- **抢购账号**: {username}",
-                f"- **抢购状态**: {data.get('seckill_status', '未知')}",
-                f"- **抢购结果**: {data.get('seckill_result', '未知')}",
-                f""
-            ])
-
-            if data.get('seckill_success'):
-                message_parts.extend([
-                    f"## 抢购成功！",
-                    f"恭喜！您已成功抢到商品！",
-                    f"",
-                    f"### 订单信息",
-                    f"- **订单号**: `{data.get('order_id', '未知')}`",
-                    f"- **订单金额**: **{data.get('total_money', '未知')}**",
-                    f"- **下单时间**: {data.get('order_time', current_time)}",
-                    f"",
-                    f"### 付款信息",
-                    f"**重要提醒：请在30分钟内完成付款！**",
-                    f"",
-                    f"**付款链接**: [点击这里付款]({data.get('pay_url', '#')})",
-                    f"",
-                    f"**付款步骤**:",
-                    f"1. 点击上方付款链接",
-                    f"2. 登录京东账号",
-                    f"3. 确认订单信息",
-                    f"4. 选择支付方式完成付款",
-                    f"",
-                    f"### 手机端付款",
-                    f"您也可以打开京东APP，在\"我的订单\"中找到该订单进行付款。",
-                    f""
-                ])
-            else:
-                message_parts.extend([
-                    f"## 抢购失败",
-                    f"很遗憾，本次抢购未成功。",
-                    f"",
-                    f"**失败原因**: {data.get('error_message', '未知错误')}",
-                    f"**错误代码**: {data.get('error_code', '未知')}",
-                    f"",
-                    f"**系统状态**:",
-                    f"- 系统将继续自动重试",
-                    f"- 请保持程序运行",
-                    f"- 不要手动干预",
-                    f""
-                ])
-
-        elif data.get('type') == '登录通知':
-            message_parts.extend([
-                f"## 登录状态变更",
-                f"- **变更时间**: {current_time}",
-                f"- **变更类型**: {data.get('login_action', '未知')}",
-                f"- **当前状态**: {data.get('login_status', '未知')}",
-                f""
-            ])
-
-            if data.get('login_success'):
-                message_parts.extend([
-                    f"## 登录成功",
-                    f"用户已成功登录京东账号。",
-                    f"",
-                    f"**账号信息**:",
-                    f"- **用户名**: {username}",
-                    f"- **登录时间**: {current_time}",
-                    f"- **登录方式**: 二维码扫码登录",
-                    f"",
-                    f"**系统状态**:",
-                    f"- 程序将继续正常运行",
-                    f"- 自动执行预约和抢购任务",
-                    f""
-                ])
-            else:
-                message_parts.extend([
-                    f"## 需要重新登录",
-                    f"检测到登录状态已失效，需要重新登录。",
-                    f"",
-                    f"**失效原因**: {data.get('logout_reason', '登录过期')}",
-                    f"",
-                    f"**操作提醒**:",
-                    f"- 程序已自动弹出二维码",
-                    f"- 请使用京东APP扫描二维码",
-                    f"- 确认登录后程序将自动继续",
-                    f"- 请尽快完成登录以免影响抢购",
-                    f""
-                ])
-
-        # 添加系统信息
-        message_parts.extend([
-            f"---",
-            f"",
-            f"## 系统信息",
-            f"- **程序版本**: v2.1.1",
-            f"- **运行模式**: 全自动化模式",
-            f"- **通知时间**: {current_time}",
-            f"",
-            f"*本消息由京东茅台秒杀系统自动发送*"
-        ])
-
-        return "\n".join(message_parts)
 
     def display_status_panel(self, time_status, reserve_completed, seckill_completed):
         """显示状态面板"""

@@ -1689,7 +1689,7 @@ class JdSeckill(object):
 
         elif data.get('type') == '登录通知':
             message_parts.extend([
-                f"## 登录状态变更",
+                f"## 🔐 登录状态变更",
                 f"- **变更时间**: {current_time}",
                 f"- **变更类型**: {data.get('login_action', '未知')}",
                 f"- **当前状态**: {data.get('login_status', '未知')}",
@@ -1698,7 +1698,7 @@ class JdSeckill(object):
 
             if data.get('login_success'):
                 message_parts.extend([
-                    f"## 登录成功",
+                    f"## ✅ 登录成功",
                     f"用户已成功登录京东账号。",
                     f"",
                     f"**账号信息**:",
@@ -1713,7 +1713,7 @@ class JdSeckill(object):
                 ])
             else:
                 message_parts.extend([
-                    f"## 需要重新登录",
+                    f"## ⚠️ 需要重新登录",
                     f"检测到登录状态已失效，需要重新登录。",
                     f"",
                     f"**失效原因**: {data.get('logout_reason', '登录过期')}",
@@ -1730,7 +1730,7 @@ class JdSeckill(object):
         message_parts.extend([
             f"---",
             f"",
-            f"## 系统信息",
+            f"## 📊 系统信息",
             f"- **程序版本**: v2.1.1",
             f"- **运行模式**: 全自动化模式",
             f"- **通知时间**: {current_time}",
