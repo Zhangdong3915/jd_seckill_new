@@ -124,9 +124,10 @@ def wait_some_time():
         time.sleep(base_interval * random_factor)
 
 
-def send_wechat(message):
+def send_wechat(message, sckey=None):
     """推送信息到微信"""
-    sckey = global_config.getRaw('messenger', 'sckey')
+    if not sckey:
+        sckey = global_config.getRaw('messenger', 'sckey')
 
     # 判断是新版还是旧版Server酱
     if sckey.startswith('SCT'):

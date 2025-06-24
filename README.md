@@ -26,17 +26,24 @@
 
 **推荐使用**：无需安装Python环境，开箱即用！
 
-### 下载使用
-1. 下载最新的ZIP包：`京东茅台秒杀系统_v2.1.0_完整版.zip`
-2. 解压到任意目录
-3. 编辑 `config.ini` 配置文件（重要！）
-4. 双击 `京东茅台秒杀系统.exe` 运行
+### 📦 下载最新版本
+
+**从GitHub Release下载**：
+1. 访问 [Releases页面](https://github.com/YOUR_USERNAME/YOUR_REPO/releases)
+2. 下载最新的 `京东茅台秒杀系统_vX.X.X_完整版.zip`
+3. 解压到任意目录
+4. 编辑 `config.ini` 配置文件（重要！）
+5. 双击 `京东茅台秒杀系统.exe` 运行
+
+**直接下载链接**：
+- [下载最新版本](https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest)
 
 ### EXE版本特点
 - ✅ **免安装**：无需Python环境，直接运行
 - ✅ **完整功能**：包含所有最新功能和安全策略
 - ✅ **便于分发**：可直接发送给其他人使用
 - ✅ **文档齐全**：包含完整的使用说明和配置指南
+- ✅ **自动更新**：通过GitHub Release获取最新版本
 
 ## 📁 项目结构
 

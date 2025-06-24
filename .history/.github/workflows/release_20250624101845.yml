@@ -1,0 +1,141 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送v开头的标签时触发，如v2.1.1
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests>=2.28.0
+        pip install lxml>=4.9.0
+        pip install psutil>=5.9.0
+        pip install cryptography>=3.4.8
+        pip install pyinstaller>=5.0
+
+    - name: Create simple build script
+      run: |
+        echo 'import os, sys, subprocess, shutil, zipfile, re' > simple_build.py
+        echo 'from datetime import datetime' >> simple_build.py
+        echo '' >> simple_build.py
+        echo 'def get_version():' >> simple_build.py
+        echo '    try:' >> simple_build.py
+        echo '        result = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True)' >> simple_build.py
+        echo '        return result.stdout.strip() if result.returncode == 0 else "v2.1.1"' >> simple_build.py
+        echo '    except:' >> simple_build.py
+        echo '        return "v2.1.1"' >> simple_build.py
+        echo '' >> simple_build.py
+        echo 'def main():' >> simple_build.py
+        echo '    print("Building Windows executable...")' >> simple_build.py
+        echo '    cmd = [sys.executable, "-m", "PyInstaller", "--onedir", "--console", "--name", "京东茅台秒杀系统", "main.py"]' >> simple_build.py
+        echo '    subprocess.run(cmd, check=True)' >> simple_build.py
+        echo '    ' >> simple_build.py
+        echo '    version = get_version()' >> simple_build.py
+        echo '    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")' >> simple_build.py
+        echo '    zip_name = f"京东茅台秒杀系统_{version}_完整版_{timestamp}.zip"' >> simple_build.py
+        echo '    ' >> simple_build.py
+        echo '    with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zipf:' >> simple_build.py
+        echo '        for root, dirs, files in os.walk("dist/京东茅台秒杀系统"):' >> simple_build.py
+        echo '            for file in files:' >> simple_build.py
+        echo '                file_path = os.path.join(root, file)' >> simple_build.py
+        echo '                arc_path = os.path.relpath(file_path, "dist")' >> simple_build.py
+        echo '                zipf.write(file_path, arc_path)' >> simple_build.py
+        echo '        zipf.write("config.ini", "京东茅台秒杀系统/config.ini")' >> simple_build.py
+        echo '        zipf.write("README.md", "京东茅台秒杀系统/README.md")' >> simple_build.py
+        echo '    print(f"Created: {zip_name}")' >> simple_build.py
+        echo '' >> simple_build.py
+        echo 'if __name__ == "__main__":' >> simple_build.py
+        echo '    main()' >> simple_build.py
+
+    - name: Build Windows executable
+      run: |
+        python simple_build.py
+        
+    - name: Get version from tag
+      id: get_version
+      shell: bash
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Triggered by tag: $VERSION"
+        else
+          # 如果不是标签触发，获取最新标签或使用默认版本
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.1.1")
+          echo "Not triggered by tag, using latest tag: $VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Final version: $VERSION"
+        
+    - name: Find ZIP file
+      id: find_zip
+      shell: bash
+      run: |
+        ZIP_FILE=$(ls 京东茅台秒杀系统_v*_完整版_*.zip | head -1)
+        echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+        echo "Found ZIP file: $ZIP_FILE"
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.version }}
+        release_name: 京东茅台秒杀系统 ${{ steps.get_version.outputs.version }}
+        body: |
+          ## 🎉 京东茅台秒杀系统 ${{ steps.get_version.outputs.version }}
+          
+          ### 📦 下载说明
+          - 下载 `京东茅台秒杀系统_${{ steps.get_version.outputs.version }}_完整版.zip`
+          - 解压到任意目录
+          - 编辑 `config.ini` 配置文件
+          - 双击 `京东茅台秒杀系统.exe` 运行
+          
+          ### ✨ 主要功能
+          - 🔐 **智能登录**: 支持京东新版Cookie格式，自动识别登录状态
+          - 🖼️ **二维码自动关闭**: 扫码完成后自动关闭二维码窗口
+          - 📱 **增强通知**: 详细的markdown格式通知，包含完整信息
+          - ⚡ **全自动化**: 预约+抢购一体化，7x24小时无人值守
+          - 🛡️ **安全策略**: 多级风控策略，保护账户安全
+          
+          ### 🔧 技术改进
+          - 支持Windows 10/11默认照片应用自动关闭
+          - 兼容传统和新版京东Cookie格式
+          - 智能错误恢复和异常处理
+          - 完善的用户体验和操作指引
+          
+          ### ⚠️ 使用提醒
+          - 首次使用建议选择保守策略测试
+          - 详细使用说明请查看压缩包内的文档
+          - 如遇问题请查看bug修复.md文档
+          
+          ---
+          **系统要求**: Windows 10/11 x64
+          **无需安装**: 解压即用，包含完整运行环境
+        draft: false
+        prerelease: false
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ steps.find_zip.outputs.zip_file }}
+        asset_name: 京东茅台秒杀系统_${{ steps.get_version.outputs.version }}_完整版.zip
+        asset_content_type: application/zip

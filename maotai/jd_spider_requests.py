@@ -5,6 +5,7 @@ import functools
 import json
 import os
 import pickle
+import sys
 
 from lxml import etree
 
@@ -161,7 +162,7 @@ class QrLogin:
             'rid': str(int(time.time() * 1000)),
         }
         try:
-            resp = self.session.get(url=url, params=payload, allow_redirects=False, timeout=10)
+            resp = self.session.get(url=url, params=payload, allow_redirects=False, timeout=3)
             logger.info(f'登录验证响应状态: {resp.status_code}')
             logger.info(f'登录验证响应头: {resp.headers.get("Location", "无重定向")}')
 
@@ -353,6 +354,22 @@ class JdSeckill(object):
 
         self.qrlogin = QrLogin(self.spider_session)
 
+        # 初始化安全配置管理器
+        try:
+            from helper.secure_config import SecureConfigManager
+            self.secure_config = SecureConfigManager()
+        except ImportError as e:
+            logger.warning(f'安全配置模块导入失败: {e}')
+            self.secure_config = None
+
+        # 初始化设备指纹收集器
+        try:
+            from helper.device_fingerprint import DeviceFingerprintCollector
+            self.device_collector = DeviceFingerprintCollector(self.spider_session.get_session())
+        except ImportError as e:
+            logger.warning(f'设备指纹模块导入失败: {e}')
+            self.device_collector = None
+
         # 初始化信息
         self.sku_id = global_config.getRaw('config', 'sku_id')
         self.seckill_num = global_config.getRaw('config', 'seckill_num')
@@ -425,11 +442,16 @@ class JdSeckill(object):
             self.nick_name = self.get_username()
             self.spider_session.save_cookies_to_local(self.nick_name)
 
+            # 登录成功后自动收集设备指纹参数
+            self._collect_device_fingerprint()
+
+            # 登录成功后验证必需配置并提示用户输入
+            self._validate_and_setup_config()
+
             # 发送登录成功通知
             from datetime import datetime
             notification_data = {
                 'type': '登录通知',
-                'icon': '✅',
                 'title': '登录成功',
                 'summary': f'用户 {self.nick_name} 已成功登录',
                 'login_action': '用户登录',
@@ -447,6 +469,235 @@ class JdSeckill(object):
         else:
             print("\n登录失败，请重试")
             raise SKException("二维码登录失败！")
+
+    def _collect_device_fingerprint(self):
+        """收集设备指纹参数"""
+        if not self.device_collector:
+            logger.warning('设备指纹收集器未初始化')
+            return
+
+        try:
+            print("🔍 正在收集设备指纹参数...")
+
+            # 从cookies中更新参数
+            self.device_collector.update_from_cookies()
+
+            # 收集设备参数
+            eid, fp = self.device_collector.collect_device_params()
+
+            # 更新配置文件
+            if self.secure_config and (eid or fp):
+                self.secure_config.update_device_params(eid=eid, fp=fp)
+
+        except Exception as e:
+            logger.warning(f'设备指纹收集失败: {e}')
+
+    def get_secure_payment_password(self, required=True):
+        """获取安全的支付密码"""
+        if self.secure_config:
+            return self.secure_config.get_payment_password(required=required)
+        else:
+            # 备用方案：从配置文件直接读取
+            try:
+                password = global_config.getRaw('account', 'payment_pwd')
+            except:
+                password = ''
+            if required and not password:
+                print("\n" + "="*60)
+                print("❌ 错误：支付密码未配置！")
+                print("="*60)
+                print("支付密码是必须的，用于自动支付订单。")
+                print("请在config.ini的[account]部分设置payment_pwd")
+                print("="*60)
+                raise ValueError("支付密码未配置，程序无法继续执行")
+            return password
+
+    def get_secure_sckey(self, required=True, interactive=False):
+        """获取安全的Server酱密钥"""
+        if self.secure_config:
+            return self.secure_config.get_sckey(required=required, interactive=interactive)
+        else:
+            # 备用方案：从配置文件直接读取
+            try:
+                sckey = global_config.getRaw('messenger', 'sckey')
+            except:
+                sckey = ''
+            if required and not sckey:
+                print("\n" + "="*60)
+                print("⚠️ 警告：Server酱密钥未配置！")
+                print("="*60)
+                print("微信通知已启用但SCKEY未配置，将无法发送通知。")
+                print("请在config.ini的[messenger]部分设置sckey")
+                print("或访问 https://sct.ftqq.com/ 获取SCKEY")
+                print("="*60)
+                print("⚠️ 程序将继续运行，但无法发送微信通知")
+            return sckey
+
+    def validate_required_config(self):
+        """验证必需的配置参数"""
+        print("🔍 检查必需配置参数...")
+
+        try:
+            # 检查支付密码（必需）
+            self.get_secure_payment_password(required=True)
+            print("✅ 支付密码配置正常")
+        except ValueError as e:
+            print(f"❌ 支付密码配置错误: {e}")
+            return False
+
+        # 检查微信通知配置（条件必需）
+        try:
+            messenger_enable = global_config.getRaw('messenger', 'enable')
+        except:
+            messenger_enable = 'false'
+        if messenger_enable.lower() == 'true':
+            try:
+                sckey = self.get_secure_sckey(required=True)
+                if sckey:
+                    print("✅ 微信通知配置正常")
+                else:
+                    print("⚠️ 微信通知配置不完整，将无法发送通知")
+            except Exception as e:
+                print(f"⚠️ 微信通知配置问题: {e}")
+        else:
+            print("ℹ️ 微信通知已禁用，跳过SCKEY检查")
+
+        return True
+
+    def _check_basic_config(self):
+        """检查基本配置参数（程序启动时执行）"""
+        try:
+            print("检查必需配置参数...")
+        except UnicodeEncodeError:
+            print("检查必需配置参数...")
+
+        config_issues = []
+
+        try:
+            # 1. 检查支付密码
+            try:
+                password = self.get_secure_payment_password(required=False)
+                if not password or password.strip() == "":
+                    config_issues.append("支付密码未配置")
+            except Exception as e:
+                config_issues.append(f"支付密码配置错误: {e}")
+
+            # 2. 检查微信通知配置
+            try:
+                messenger_enable = global_config.getRaw('messenger', 'enable')
+            except:
+                messenger_enable = 'false'
+
+            if messenger_enable.lower() == 'true':
+                try:
+                    sckey = self.get_secure_sckey(required=False, interactive=False)
+                    if not sckey or sckey.strip() == "":
+                        config_issues.append("微信通知已启用但SCKEY未配置")
+                except Exception as e:
+                    config_issues.append(f"SCKEY配置错误: {e}")
+
+            # 如果有配置问题，显示提示
+            if config_issues:
+                print("\n" + "="*60)
+                try:
+                    print("[警告] 发现配置问题")
+                except UnicodeEncodeError:
+                    print("[警告] 发现配置问题")
+                print("="*60)
+                for issue in config_issues:
+                    try:
+                        print(f"[错误] {issue}")
+                    except UnicodeEncodeError:
+                        print(f"[错误] {issue}")
+
+                try:
+                    print("\n[提示] 解决方案：")
+                except UnicodeEncodeError:
+                    print("\n[提示] 解决方案：")
+                print("1. 登录后系统会自动提示您配置缺失的参数")
+                print("2. 或者现在手动配置：")
+                print("   - 支付密码：在config.ini的[account]部分设置payment_pwd")
+                print("   - SCKEY：在config.ini的[messenger]部分设置sckey")
+                print("3. 使用环境变量：")
+                print("   - set JD_PAYMENT_PWD=您的支付密码")
+                print("   - set JD_SCKEY=您的SCKEY")
+                print("="*60)
+                print("程序将继续运行，但请在登录后完成配置")
+            else:
+                try:
+                    print("[成功] 基本配置检查通过")
+                except UnicodeEncodeError:
+                    print("[成功] 基本配置检查通过")
+
+        except Exception as e:
+            try:
+                print(f"[错误] 配置检查失败: {e}")
+            except UnicodeEncodeError:
+                print(f"[错误] 配置检查失败: {e}")
+            raise
+
+    def _validate_and_setup_config(self):
+        """验证并设置必需的配置参数"""
+        print("\n" + "="*60)
+        print("🔍 验证必需配置参数")
+        print("="*60)
+
+        config_updated = False
+
+        try:
+            # 1. 验证支付密码（必需）
+            print("1. 检查支付密码配置...")
+            try:
+                password = self.get_secure_payment_password(required=True)
+                print("✅ 支付密码配置正常")
+            except ValueError:
+                print("❌ 支付密码未配置，程序无法继续执行")
+                print("请按照上述提示完成配置后重新运行程序")
+                sys.exit(1)
+            except Exception as e:
+                print(f"❌ 支付密码配置检查失败: {e}")
+                sys.exit(1)
+
+            # 2. 检查微信通知配置（条件必需）
+            print("\n2. 检查微信通知配置...")
+            try:
+                messenger_enable = global_config.getRaw('messenger', 'enable')
+            except:
+                messenger_enable = 'false'
+
+            if messenger_enable.lower() == 'true':
+                print("   微信通知已启用，检查SCKEY配置...")
+                try:
+                    sckey = self.get_secure_sckey(required=True, interactive=True)
+                    if sckey:
+                        print("✅ 微信通知配置正常")
+                    else:
+                        print("ℹ️ 用户选择跳过SCKEY配置")
+                except Exception as e:
+                    print(f"⚠️ 微信通知配置检查失败: {e}")
+                    print("   程序将继续运行，但无法发送微信通知")
+            else:
+                print("ℹ️ 微信通知已禁用，跳过SCKEY检查")
+
+            # 3. 重新加载配置文件（确保最新配置生效）
+            print("\n🔄 重新加载配置文件...")
+            try:
+                # 重新初始化配置
+                import importlib
+                import maotai.config
+                importlib.reload(maotai.config)
+                print("✅ 配置已重新加载")
+            except Exception as e:
+                print(f"⚠️ 配置重新加载失败: {e}")
+                print("建议重启程序以确保配置生效")
+
+            print("\n✅ 配置验证完成，程序可以正常运行")
+            print("="*60)
+
+        except Exception as e:
+            print(f"\n❌ 配置验证过程中出现错误: {e}")
+            print("请检查配置后重新运行程序")
+            sys.exit(1)
 
     def check_login(func):
         """
@@ -624,9 +875,20 @@ class JdSeckill(object):
         获取安全的抢购配置
         """
         try:
-            risk_level = global_config.getRaw('config', 'risk_level', fallback='BALANCED')
-            max_processes = int(global_config.getRaw('config', 'max_processes', fallback='8'))
-            max_retries = int(global_config.getRaw('config', 'max_retries', fallback='100'))
+            try:
+                risk_level = global_config.getRaw('config', 'risk_level')
+            except:
+                risk_level = 'BALANCED'
+
+            try:
+                max_processes = int(global_config.getRaw('config', 'max_processes'))
+            except:
+                max_processes = 8
+
+            try:
+                max_retries = int(global_config.getRaw('config', 'max_retries'))
+            except:
+                max_retries = 100
         except:
             # 默认配置
             risk_level = 'BALANCED'
@@ -981,11 +1243,19 @@ class JdSeckill(object):
 
     def get_sku_title(self):
         """获取商品名称"""
-        url = 'https://item.jd.com/{}.html'.format(global_config.getRaw('config', 'sku_id'))
-        resp = self.session.get(url).content
-        x_data = etree.HTML(resp)
-        sku_title = x_data.xpath('/html/head/title/text()')
-        return sku_title[0]
+        try:
+            url = 'https://item.jd.com/{}.html'.format(global_config.getRaw('config', 'sku_id'))
+            resp = self.session.get(url, timeout=5).content
+            x_data = etree.HTML(resp)
+            sku_title = x_data.xpath('/html/head/title/text()')
+            if sku_title:
+                return sku_title[0]
+            else:
+                # 如果没有找到标题，返回默认值
+                return f"商品ID: {global_config.getRaw('config', 'sku_id')}"
+        except Exception as e:
+            logger.warning(f'获取商品标题失败: {e}')
+            return f"商品ID: {global_config.getRaw('config', 'sku_id')}"
 
     def get_seckill_url(self):
         """获取商品的抢购链接
@@ -1115,7 +1385,7 @@ class JdSeckill(object):
             'invoicePhone': invoice_info.get('invoicePhone', ''),
             'invoicePhoneKey': invoice_info.get('invoicePhoneKey', ''),
             'invoice': 'true' if invoice_info else 'false',
-            'password': global_config.get('account', 'payment_pwd'),
+            'password': self.get_secure_payment_password(),
             'codTimeType': 3,
             'paymentType': 4,
             'areaCode': '',
@@ -1225,7 +1495,17 @@ class JdSeckill(object):
         if current_time - self.last_login_check > self.login_check_interval:
             logger.info('定期检查登录状态...')
             old_status = self.qrlogin.is_login
-            self.qrlogin.refresh_login_status()
+
+            # 使用快速的登录检查，设置较短的超时时间
+            try:
+                self.qrlogin.refresh_login_status()
+            except Exception as e:
+                logger.warning(f'登录状态检查失败: {e}')
+                # 如果检查失败，使用简化检查
+                cookies = self.session.cookies
+                has_login_cookies = any(cookie_name in cookies for cookie_name in ['pt_key', 'pt_pin', 'pin', 'pinId'])
+                self.qrlogin.is_login = has_login_cookies
+                logger.info(f'使用简化登录检查结果: {has_login_cookies}')
 
             if old_status and not self.qrlogin.is_login:
                 logger.warning('检测到登录状态失效，开始自动重新登录')
@@ -1275,26 +1555,29 @@ class JdSeckill(object):
 
         # 检查是否为工作日（周一到周五）
         if now.weekday() >= 5:  # 周六(5)和周日(6)
+            # 从配置文件读取预约时间
+            reserve_time_str = global_config.getRaw('config', 'reserve_time')
             # 计算到下周一的时间
             days_until_monday = 7 - now.weekday()
             next_monday = now.date() + timedelta(days=days_until_monday)
-            next_workday_10_05 = datetime.combine(next_monday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
-            time_to_next_workday = (next_workday_10_05 - now).total_seconds()
+            next_workday_reserve = datetime.combine(next_monday, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
+            time_to_next_workday = (next_workday_reserve - now).total_seconds()
 
             return {
                 'status': 'weekend',
                 'action': '等待工作日',
                 'time_to_action': time_to_next_workday,
-                'next_action_time': next_workday_10_05,
-                'description': f'周末不抢购，等待下周一10:05开始预约'
+                'next_action_time': next_workday_reserve,
+                'description': f'周末不抢购，等待下周一{reserve_time_str[:5]}开始预约'
             }
 
         # 工作日逻辑
-        # 预约时间：10:05
-        # 抢购时间：12:00-12:30
-        reserve_time = datetime.combine(now.date(), datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
+        # 从配置文件读取时间设置
+        reserve_time_str = global_config.getRaw('config', 'reserve_time')
         buy_time_str = global_config.getRaw('config', 'buy_time')
         last_purchase_time_str = global_config.getRaw('config', 'last_purchase_time')
+
+        reserve_time = datetime.combine(now.date(), datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
 
         buy_time = datetime.strptime(f"{now.date()} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
         last_purchase_time = datetime.strptime(f"{now.date()} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
@@ -1304,7 +1587,7 @@ class JdSeckill(object):
             tomorrow = now.date() + timedelta(days=1)
             # 检查明天是否为工作日
             if tomorrow.weekday() < 5:  # 明天是工作日
-                reserve_time = datetime.combine(tomorrow, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
+                reserve_time = datetime.combine(tomorrow, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
                 buy_time = datetime.strptime(f"{tomorrow} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
                 last_purchase_time = datetime.strptime(f"{tomorrow} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
             else:
@@ -1313,7 +1596,7 @@ class JdSeckill(object):
                 while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
                     days_to_add += 1
                 next_workday = now.date() + timedelta(days=days_to_add)
-                reserve_time = datetime.combine(next_workday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
+                reserve_time = datetime.combine(next_workday, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
                 buy_time = datetime.strptime(f"{next_workday} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
                 last_purchase_time = datetime.strptime(f"{next_workday} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
 
@@ -1328,9 +1611,9 @@ class JdSeckill(object):
                 'action': '等待预约时间',
                 'time_to_action': time_to_reserve,
                 'next_action_time': reserve_time,
-                'description': f'距离预约时间(10:05)还有 {int(time_to_reserve//3600)}小时{int((time_to_reserve%3600)//60)}分钟'
+                'description': f'距离预约时间({reserve_time_str[:5]})还有 {int(time_to_reserve//3600)}小时{int((time_to_reserve%3600)//60)}分钟'
             }
-        elif now < buy_time:  # 预约时间段（10:05-12:00）
+        elif now < buy_time:  # 预约时间段
             return {
                 'status': 'reserve_time',
                 'action': '执行预约',
@@ -1353,7 +1636,7 @@ class JdSeckill(object):
             while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
                 days_to_add += 1
             next_workday = now.date() + timedelta(days=days_to_add)
-            next_reserve_time = datetime.combine(next_workday, datetime.strptime("10:05:00.000", "%H:%M:%S.%f").time())
+            next_reserve_time = datetime.combine(next_workday, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
             time_to_next = (next_reserve_time - now).total_seconds()
 
             return {
@@ -1361,7 +1644,7 @@ class JdSeckill(object):
                 'action': '等待下个工作日',
                 'time_to_action': time_to_next,
                 'next_action_time': next_reserve_time,
-                'description': f'今日抢购已结束，等待下个工作日10:05预约'
+                'description': f'今日抢购已结束，等待下个工作日{reserve_time_str[:5]}预约'
             }
 
     def auto_mode(self):
@@ -1374,16 +1657,20 @@ class JdSeckill(object):
         print("-" * 60)
 
         # 检查配置
+        print("🔧 开始检查配置...")
         if not self.check_and_fix_config():
             print("\n❌ 配置不完整，无法启动全自动化模式")
             self.auto_config_wizard()
             return
+
+        print("✅ 配置检查完成")
 
         # 确保用户已登录
         if not self.qrlogin.is_login:
             print("\n🔐 检测到未登录，开始登录流程")
             self.login_by_qrcode()
 
+        print("🚀 开始全自动化主循环...")
         reserve_completed = False
         seckill_completed = False
 
@@ -1545,8 +1832,12 @@ class JdSeckill(object):
 
             # 微信通知（如果启用）
             if global_config.getRaw('messenger', 'enable') == 'true':
-                full_message = f"{title}\n{message}"
-                send_wechat(full_message)
+                sckey = self.get_secure_sckey(required=False)
+                if sckey:
+                    full_message = f"{title}\n{message}"
+                    send_wechat(full_message, sckey=sckey)
+                else:
+                    logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
 
             # 日志记录
             if notification_type == "error":
@@ -1571,7 +1862,11 @@ class JdSeckill(object):
 
             # 微信通知（如果启用）
             if global_config.getRaw('messenger', 'enable') == 'true':
-                send_wechat(markdown_message)
+                sckey = self.get_secure_sckey(required=False)
+                if sckey:
+                    send_wechat(markdown_message, sckey=sckey)
+                else:
+                    logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
 
             # 日志记录
             logger.info(f"详细通知: {notification_data.get('title', '通知')}")

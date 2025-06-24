@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+安全配置管理模块
+处理敏感信息的加密存储和环境变量读取
+"""
+
+import os
+import base64
+import getpass
+import configparser
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+class SecureConfigManager:
+    """安全配置管理器"""
+    
+    def __init__(self, config_file='config.ini'):
+        self.config_file = config_file
+        self.config = configparser.ConfigParser()
+        self.config.read(config_file, encoding='utf-8')
+        
+        # 生成加密密钥
+        self._init_encryption()
+    
+    def _init_encryption(self):
+        """初始化加密密钥"""
+        # 使用机器特征生成固定密钥
+        machine_id = self._get_machine_id()
+        password = machine_id.encode()
+        
+        # 使用固定盐值确保密钥一致性
+        salt = b'jd_seckill_salt_2025'
+        
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password))
+        self.cipher = Fernet(key)
+    
+    def _get_machine_id(self):
+        """获取机器标识"""
+        try:
+            # Windows
+            if os.name == 'nt':
+                import subprocess
+                result = subprocess.run(['wmic', 'csproduct', 'get', 'uuid'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if line.strip() and 'UUID' not in line:
+                            return line.strip()
+            
+            # Linux/Mac
+            else:
+                if os.path.exists('/etc/machine-id'):
+                    with open('/etc/machine-id', 'r') as f:
+                        return f.read().strip()
+                elif os.path.exists('/var/lib/dbus/machine-id'):
+                    with open('/var/lib/dbus/machine-id', 'r') as f:
+                        return f.read().strip()
+        except:
+            pass
+        
+        # 备用方案：使用用户名和主机名
+        import socket
+        return f"{os.getenv('USERNAME', 'user')}_{socket.gethostname()}"
+    
+    def encrypt_value(self, value):
+        """加密值"""
+        if not value:
+            return ""
+        return self.cipher.encrypt(value.encode()).decode()
+    
+    def decrypt_value(self, encrypted_value):
+        """解密值"""
+        if not encrypted_value:
+            return ""
+        try:
+            return self.cipher.decrypt(encrypted_value.encode()).decode()
+        except:
+            # 如果解密失败，可能是明文，直接返回
+            return encrypted_value
+    
+    def get_secure_value(self, section, key, env_var_name=None, prompt_text=None):
+        """
+        获取安全值
+        优先级：环境变量 > 配置文件加密值 > 用户输入
+        """
+        # 1. 尝试从环境变量获取
+        if env_var_name:
+            env_value = os.getenv(env_var_name)
+            if env_value:
+                print(f"✅ 从环境变量 {env_var_name} 获取 {key}")
+                return env_value
+        
+        # 2. 尝试从配置文件获取并解密
+        try:
+            encrypted_value = self.config.get(section, key, fallback="")
+            if encrypted_value:
+                decrypted_value = self.decrypt_value(encrypted_value)
+                if decrypted_value:
+                    print(f"✅ 从配置文件获取 {key}")
+                    return decrypted_value
+        except:
+            pass
+        
+        # 3. 提示用户输入
+        if prompt_text:
+            print(f"\n⚠️ 需要配置 {key}")
+            print(f"💡 提示：可以设置环境变量 {env_var_name} 来避免每次输入")
+            
+            if "密码" in prompt_text:
+                value = getpass.getpass(f"{prompt_text}: ")
+            else:
+                value = input(f"{prompt_text}: ").strip()
+            
+            if value:
+                # 加密并保存到配置文件
+                encrypted_value = self.encrypt_value(value)
+                self.config.set(section, key, encrypted_value)
+                self.save_config()
+                print(f"✅ {key} 已加密保存到配置文件")
+                return value
+        
+        return ""
+    
+    def save_config(self):
+        """保存配置文件"""
+        with open(self.config_file, 'w', encoding='utf-8') as f:
+            self.config.write(f)
+    
+    def get_payment_password(self):
+        """获取支付密码"""
+        return self.get_secure_value(
+            section='account',
+            key='payment_pwd',
+            env_var_name='JD_PAYMENT_PWD',
+            prompt_text='请输入京东支付密码（6位数字）'
+        )
+    
+    def get_sckey(self):
+        """获取Server酱密钥"""
+        return self.get_secure_value(
+            section='messenger',
+            key='sckey',
+            env_var_name='JD_SCKEY',
+            prompt_text='请输入Server酱SCKEY（用于微信通知）'
+        )
+    
+    def update_device_params(self, eid=None, fp=None):
+        """更新设备参数"""
+        updated = False
+        
+        if eid:
+            old_eid = self.config.get('config', 'eid', fallback="")
+            if old_eid != eid:
+                self.config.set('config', 'eid', eid)
+                print(f"✅ 更新设备参数 eid: {eid[:20]}...")
+                updated = True
+        
+        if fp:
+            old_fp = self.config.get('config', 'fp', fallback="")
+            if old_fp != fp:
+                self.config.set('config', 'fp', fp)
+                print(f"✅ 更新设备参数 fp: {fp[:20]}...")
+                updated = True
+        
+        if updated:
+            self.save_config()
+            print("✅ 设备参数已自动更新到配置文件")
+        
+        return updated

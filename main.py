@@ -1,6 +1,35 @@
 import sys
+import os
+
+# 设置环境变量支持UTF-8
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Windows系统编码处理
+if sys.platform.startswith('win'):
+    try:
+        # 尝试设置控制台代码页为UTF-8
+        os.system('chcp 65001 > nul 2>&1')
+
+        # 重新配置标准输出流
+        import io
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        # 如果设置失败，使用兼容模式
+        pass
 
 from maotai.jd_spider_requests import JdSeckill
+
+def safe_print(text):
+    """安全的打印函数，处理编码问题"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 如果Unicode字符无法显示，使用ASCII替代
+        text = text.encode('ascii', errors='replace').decode('ascii')
+        print(text)
 
 if __name__ == '__main__':
     a = """
@@ -19,22 +48,62 @@ if __name__ == '__main__':
  2.秒杀抢购商品
  3.全自动化执行（预约+秒杀）
     """
-    print(a)
+    safe_print(a)
 
     jd_seckill = JdSeckill()
+
+    # 进行基本的配置检查（不管是否登录）
+    safe_print("检查基本配置...")
+    try:
+        jd_seckill._check_basic_config()
+    except SystemExit:
+        # 配置检查失败，程序退出
+        sys.exit(1)
+    except Exception as e:
+        safe_print(f"配置检查出错: {e}")
+        safe_print("请检查配置后重新运行程序")
+        sys.exit(1)
+
+    # 如果用户已登录，进行完整的配置验证
+    if jd_seckill.qrlogin.is_login:
+        safe_print("检测到用户已登录，进行完整配置验证...")
+        try:
+            jd_seckill._validate_and_setup_config()
+        except SystemExit:
+            # 配置验证失败，程序退出
+            sys.exit(1)
+        except Exception as e:
+            safe_print(f"配置验证出错: {e}")
+            safe_print("请检查配置后重新运行程序")
+            sys.exit(1)
+
+    # 重新显示功能列表，确保用户能看到选项
+    safe_print("\n" + "="*50)
+    safe_print("功能列表：")
+    safe_print(" 1.预约商品")
+    safe_print(" 2.秒杀抢购商品")
+    safe_print(" 3.全自动化执行（预约+秒杀）")
+    safe_print("="*50)
     choice_function = input('请选择:')
+    print(f"用户选择了: {choice_function}")
+
     if choice_function == '1':
+        print("启动预约模式...")
         jd_seckill.reserve()
     elif choice_function == '2':
+        print("启动秒杀模式...")
         jd_seckill.seckill_by_proc_pool()
     elif choice_function == '3':
+        print("启动全自动化模式...")
         print("\n" + "="*60)
         print("全自动化模式启动")
         print("="*60)
         print("系统将自动执行预约和秒杀流程")
         print("无需人工干预，请保持程序运行")
         print("="*60)
+        print("调用 auto_mode() 方法...")
         jd_seckill.auto_mode()
+        print("auto_mode() 方法执行完毕")
     else:
         print('没有此功能')
         sys.exit(1)
