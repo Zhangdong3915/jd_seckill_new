@@ -512,10 +512,10 @@ class JdSeckill(object):
                 raise ValueError("支付密码未配置，程序无法继续执行")
             return password
 
-    def get_secure_sckey(self, required=True, interactive=False):
+    def get_secure_sckey(self, required=True):
         """获取安全的Server酱密钥"""
         if self.secure_config:
-            return self.secure_config.get_sckey(required=required, interactive=interactive)
+            return self.secure_config.get_sckey(required=required)
         else:
             # 备用方案：从配置文件直接读取
             try:
@@ -566,10 +566,7 @@ class JdSeckill(object):
 
     def _check_basic_config(self):
         """检查基本配置参数（程序启动时执行）"""
-        try:
-            print("检查必需配置参数...")
-        except UnicodeEncodeError:
-            print("检查必需配置参数...")
+        print("检查必需配置参数...")
 
         config_issues = []
 
@@ -590,7 +587,7 @@ class JdSeckill(object):
 
             if messenger_enable.lower() == 'true':
                 try:
-                    sckey = self.get_secure_sckey(required=False, interactive=False)
+                    sckey = self.get_secure_sckey(required=False)
                     if not sckey or sckey.strip() == "":
                         config_issues.append("微信通知已启用但SCKEY未配置")
                 except Exception as e:
@@ -599,21 +596,12 @@ class JdSeckill(object):
             # 如果有配置问题，显示提示
             if config_issues:
                 print("\n" + "="*60)
-                try:
-                    print("[警告] 发现配置问题")
-                except UnicodeEncodeError:
-                    print("[警告] 发现配置问题")
+                print("⚠️ 发现配置问题")
                 print("="*60)
                 for issue in config_issues:
-                    try:
-                        print(f"[错误] {issue}")
-                    except UnicodeEncodeError:
-                        print(f"[错误] {issue}")
+                    print(f"❌ {issue}")
 
-                try:
-                    print("\n[提示] 解决方案：")
-                except UnicodeEncodeError:
-                    print("\n[提示] 解决方案：")
+                print("\n💡 解决方案：")
                 print("1. 登录后系统会自动提示您配置缺失的参数")
                 print("2. 或者现在手动配置：")
                 print("   - 支付密码：在config.ini的[account]部分设置payment_pwd")
@@ -624,16 +612,10 @@ class JdSeckill(object):
                 print("="*60)
                 print("程序将继续运行，但请在登录后完成配置")
             else:
-                try:
-                    print("[成功] 基本配置检查通过")
-                except UnicodeEncodeError:
-                    print("[成功] 基本配置检查通过")
+                print("✅ 基本配置检查通过")
 
         except Exception as e:
-            try:
-                print(f"[错误] 配置检查失败: {e}")
-            except UnicodeEncodeError:
-                print(f"[错误] 配置检查失败: {e}")
+            print(f"❌ 配置检查失败: {e}")
             raise
 
     def _validate_and_setup_config(self):

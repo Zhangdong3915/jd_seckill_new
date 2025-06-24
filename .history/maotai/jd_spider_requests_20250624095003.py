@@ -590,7 +590,7 @@ class JdSeckill(object):
 
             if messenger_enable.lower() == 'true':
                 try:
-                    sckey = self.get_secure_sckey(required=False, interactive=False)
+                    sckey = self.get_secure_sckey(required=False, allow_input=False)
                     if not sckey or sckey.strip() == "":
                         config_issues.append("微信通知已启用但SCKEY未配置")
                 except Exception as e:

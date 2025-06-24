@@ -78,26 +78,26 @@ if __name__ == '__main__':
             sys.exit(1)
 
     # 重新显示功能列表，确保用户能看到选项
-    safe_print("\n" + "="*50)
-    safe_print("功能列表：")
-    safe_print(" 1.预约商品")
-    safe_print(" 2.秒杀抢购商品")
-    safe_print(" 3.全自动化执行（预约+秒杀）")
-    safe_print("="*50)
+    print("\n" + "="*50)
+    print("功能列表：")
+    print(" 1.预约商品")
+    print(" 2.秒杀抢购商品")
+    print(" 3.全自动化执行（预约+秒杀）")
+    print("="*50)
     choice_function = input('请选择:')
     if choice_function == '1':
         jd_seckill.reserve()
     elif choice_function == '2':
         jd_seckill.seckill_by_proc_pool()
     elif choice_function == '3':
-        safe_print("\n" + "="*60)
-        safe_print("全自动化模式启动")
-        safe_print("="*60)
-        safe_print("系统将自动执行预约和秒杀流程")
-        safe_print("无需人工干预，请保持程序运行")
-        safe_print("="*60)
+        print("\n" + "="*60)
+        print("全自动化模式启动")
+        print("="*60)
+        print("系统将自动执行预约和秒杀流程")
+        print("无需人工干预，请保持程序运行")
+        print("="*60)
         jd_seckill.auto_mode()
     else:
-        safe_print('没有此功能')
+        print('没有此功能')
         sys.exit(1)
 

@@ -98,6 +98,6 @@ if __name__ == '__main__':
         safe_print("="*60)
         jd_seckill.auto_mode()
     else:
-        safe_print('没有此功能')
+        print('没有此功能')
         sys.exit(1)
 

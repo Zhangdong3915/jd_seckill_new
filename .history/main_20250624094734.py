@@ -90,14 +90,14 @@ if __name__ == '__main__':
     elif choice_function == '2':
         jd_seckill.seckill_by_proc_pool()
     elif choice_function == '3':
-        safe_print("\n" + "="*60)
-        safe_print("全自动化模式启动")
-        safe_print("="*60)
-        safe_print("系统将自动执行预约和秒杀流程")
-        safe_print("无需人工干预，请保持程序运行")
-        safe_print("="*60)
+        print("\n" + "="*60)
+        print("全自动化模式启动")
+        print("="*60)
+        print("系统将自动执行预约和秒杀流程")
+        print("无需人工干预，请保持程序运行")
+        print("="*60)
         jd_seckill.auto_mode()
     else:
-        safe_print('没有此功能')
+        print('没有此功能')
         sys.exit(1)
 

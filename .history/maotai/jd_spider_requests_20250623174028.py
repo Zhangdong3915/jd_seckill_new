@@ -5,7 +5,6 @@ import functools
 import json
 import os
 import pickle
-import sys
 
 from lxml import etree
 
@@ -512,10 +511,10 @@ class JdSeckill(object):
                 raise ValueError("支付密码未配置，程序无法继续执行")
             return password
 
-    def get_secure_sckey(self, required=True, interactive=False):
+    def get_secure_sckey(self, required=True):
         """获取安全的Server酱密钥"""
         if self.secure_config:
-            return self.secure_config.get_sckey(required=required, interactive=interactive)
+            return self.secure_config.get_sckey(required=required)
         else:
             # 备用方案：从配置文件直接读取
             try:
@@ -564,78 +563,6 @@ class JdSeckill(object):
 
         return True
 
-    def _check_basic_config(self):
-        """检查基本配置参数（程序启动时执行）"""
-        try:
-            print("检查必需配置参数...")
-        except UnicodeEncodeError:
-            print("检查必需配置参数...")
-
-        config_issues = []
-
-        try:
-            # 1. 检查支付密码
-            try:
-                password = self.get_secure_payment_password(required=False)
-                if not password or password.strip() == "":
-                    config_issues.append("支付密码未配置")
-            except Exception as e:
-                config_issues.append(f"支付密码配置错误: {e}")
-
-            # 2. 检查微信通知配置
-            try:
-                messenger_enable = global_config.getRaw('messenger', 'enable')
-            except:
-                messenger_enable = 'false'
-
-            if messenger_enable.lower() == 'true':
-                try:
-                    sckey = self.get_secure_sckey(required=False, interactive=False)
-                    if not sckey or sckey.strip() == "":
-                        config_issues.append("微信通知已启用但SCKEY未配置")
-                except Exception as e:
-                    config_issues.append(f"SCKEY配置错误: {e}")
-
-            # 如果有配置问题，显示提示
-            if config_issues:
-                print("\n" + "="*60)
-                try:
-                    print("[警告] 发现配置问题")
-                except UnicodeEncodeError:
-                    print("[警告] 发现配置问题")
-                print("="*60)
-                for issue in config_issues:
-                    try:
-                        print(f"[错误] {issue}")
-                    except UnicodeEncodeError:
-                        print(f"[错误] {issue}")
-
-                try:
-                    print("\n[提示] 解决方案：")
-                except UnicodeEncodeError:
-                    print("\n[提示] 解决方案：")
-                print("1. 登录后系统会自动提示您配置缺失的参数")
-                print("2. 或者现在手动配置：")
-                print("   - 支付密码：在config.ini的[account]部分设置payment_pwd")
-                print("   - SCKEY：在config.ini的[messenger]部分设置sckey")
-                print("3. 使用环境变量：")
-                print("   - set JD_PAYMENT_PWD=您的支付密码")
-                print("   - set JD_SCKEY=您的SCKEY")
-                print("="*60)
-                print("程序将继续运行，但请在登录后完成配置")
-            else:
-                try:
-                    print("[成功] 基本配置检查通过")
-                except UnicodeEncodeError:
-                    print("[成功] 基本配置检查通过")
-
-        except Exception as e:
-            try:
-                print(f"[错误] 配置检查失败: {e}")
-            except UnicodeEncodeError:
-                print(f"[错误] 配置检查失败: {e}")
-            raise
-
     def _validate_and_setup_config(self):
         """验证并设置必需的配置参数"""
         print("\n" + "="*60)
@@ -668,28 +595,24 @@ class JdSeckill(object):
             if messenger_enable.lower() == 'true':
                 print("   微信通知已启用，检查SCKEY配置...")
                 try:
-                    sckey = self.get_secure_sckey(required=True, interactive=True)
+                    sckey = self.get_secure_sckey(required=False)
                     if sckey:
                         print("✅ 微信通知配置正常")
                     else:
-                        print("ℹ️ 用户选择跳过SCKEY配置")
+                        print("⚠️ 微信通知配置不完整")
+                        print("   程序将继续运行，但无法发送微信通知")
+                        print("   建议配置SCKEY以获得第一时间的抢购通知")
                 except Exception as e:
                     print(f"⚠️ 微信通知配置检查失败: {e}")
                     print("   程序将继续运行，但无法发送微信通知")
             else:
                 print("ℹ️ 微信通知已禁用，跳过SCKEY检查")
 
-            # 3. 重新加载配置文件（确保最新配置生效）
-            print("\n🔄 重新加载配置文件...")
-            try:
-                # 重新初始化配置
-                import importlib
-                import maotai.config
-                importlib.reload(maotai.config)
+            # 3. 如果配置有更新，重新加载配置
+            if config_updated:
+                print("\n🔄 重新加载配置文件...")
+                global_config.reload()
                 print("✅ 配置已重新加载")
-            except Exception as e:
-                print(f"⚠️ 配置重新加载失败: {e}")
-                print("建议重启程序以确保配置生效")
 
             print("\n✅ 配置验证完成，程序可以正常运行")
             print("="*60)
