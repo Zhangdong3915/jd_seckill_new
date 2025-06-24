@@ -121,8 +121,8 @@ cookies/
 qr_code.png
 
 # release files - 这些文件将通过GitHub Release分发
-*.zip
-京东茅台秒杀系统_*.zip
+# *.zip
+# 京东茅台秒杀系统_*.zip
 release/
 
 # build artifacts
