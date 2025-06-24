@@ -1728,6 +1728,13 @@ class JdSeckill(object):
                         allow_input=False
                     )
 
+                if not sckey:
+                    # 备用方案：从配置文件直接读取
+                    try:
+                        sckey = global_config.getRaw('messenger', 'sckey')
+                    except:
+                        sckey = None
+
                 if sckey and sckey.strip():
                     send_wechat(markdown_message)
                     logger.info('微信通知发送成功')

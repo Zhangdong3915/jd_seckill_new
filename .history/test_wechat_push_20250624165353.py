@@ -94,25 +94,15 @@ def test_config():
     
     try:
         from maotai.config import global_config
-        from helper.secure_config import SecureConfigManager
-
+        
         # 读取所有messenger配置
         try:
             enable = global_config.getRaw('messenger', 'enable')
-
-            # 使用安全配置管理器获取解密后的SCKEY
-            secure_config = SecureConfigManager()
-            sckey = secure_config.get_secure_value(
-                section='messenger',
-                key='sckey',
-                env_var_name='JD_SCKEY',
-                prompt_text=None,
-                allow_input=False
-            )
-
+            sckey = global_config.getRaw('messenger', 'sckey')
+            
             print("当前配置:")
             print(f"  enable = {enable}")
-            print(f"  sckey = {sckey[:10]}...{sckey[-10:] if sckey and len(sckey) > 20 else sckey}")
+            print(f"  sckey = {sckey}")
             
             # 验证配置
             issues = []

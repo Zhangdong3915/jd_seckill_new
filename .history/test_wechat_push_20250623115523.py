@@ -19,28 +19,18 @@ def test_wechat_push():
     try:
         from helper.jd_helper import send_wechat
         from maotai.config import global_config
-        from helper.secure_config import SecureConfigManager
-
+        
         # 检查配置
         enable = global_config.getRaw('messenger', 'enable')
-
-        # 使用安全配置管理器获取解密后的SCKEY
-        secure_config = SecureConfigManager()
-        sckey = secure_config.get_secure_value(
-            section='messenger',
-            key='sckey',
-            env_var_name='JD_SCKEY',
-            prompt_text=None,
-            allow_input=False
-        )
-
+        sckey = global_config.getRaw('messenger', 'sckey')
+        
         print(f"推送开关: {enable}")
-        print(f"SCKEY: {sckey[:10]}...{sckey[-10:] if sckey and len(sckey) > 20 else sckey}")
-
+        print(f"SCKEY: {sckey}")
+        
         if enable != 'true':
             print("❌ 推送功能未开启，请在config.ini中设置 enable = true")
             return False
-
+        
         if not sckey or sckey.strip() == '':
             print("❌ SCKEY未配置，请在config.ini中设置正确的sckey")
             return False
@@ -94,25 +84,15 @@ def test_config():
     
     try:
         from maotai.config import global_config
-        from helper.secure_config import SecureConfigManager
-
+        
         # 读取所有messenger配置
         try:
             enable = global_config.getRaw('messenger', 'enable')
-
-            # 使用安全配置管理器获取解密后的SCKEY
-            secure_config = SecureConfigManager()
-            sckey = secure_config.get_secure_value(
-                section='messenger',
-                key='sckey',
-                env_var_name='JD_SCKEY',
-                prompt_text=None,
-                allow_input=False
-            )
-
+            sckey = global_config.getRaw('messenger', 'sckey')
+            
             print("当前配置:")
             print(f"  enable = {enable}")
-            print(f"  sckey = {sckey[:10]}...{sckey[-10:] if sckey and len(sckey) > 20 else sckey}")
+            print(f"  sckey = {sckey}")
             
             # 验证配置
             issues = []
@@ -152,17 +132,8 @@ def test_api_connectivity():
     try:
         import requests
         from maotai.config import global_config
-        from helper.secure_config import SecureConfigManager
-
-        # 使用安全配置管理器获取解密后的SCKEY
-        secure_config = SecureConfigManager()
-        sckey = secure_config.get_secure_value(
-            section='messenger',
-            key='sckey',
-            env_var_name='JD_SCKEY',
-            prompt_text=None,
-            allow_input=False
-        )
+        
+        sckey = global_config.getRaw('messenger', 'sckey')
         
         if sckey.startswith('SCT'):
             url = f"https://sctapi.ftqq.com/{sckey}.send"
