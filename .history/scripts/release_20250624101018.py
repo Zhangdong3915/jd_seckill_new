@@ -135,8 +135,8 @@ def create_tag_and_push(version):
         if result.returncode != 0:
             print(f"推送标签失败: {result.stderr}")
             return False
-
-        print(f"[成功] 标签 {version} 创建并推送成功")
+            
+        print(f"✅ 标签 {version} 创建并推送成功")
         return True
         
     except Exception as e:
@@ -146,26 +146,26 @@ def create_tag_and_push(version):
 def main():
     """主函数"""
     print("=" * 60)
-    print("GitHub Release 发布工具")
+    print("🚀 GitHub Release 发布工具")
     print("=" * 60)
-
+    
     # 检查是否在项目根目录
     if not os.path.exists('main.py'):
-        print("[错误] 请在项目根目录下运行此脚本")
+        print("❌ 请在项目根目录下运行此脚本")
         return False
-
+    
     # 检查Git状态
-    print("[检查] 检查Git状态...")
+    print("📋 检查Git状态...")
     if not check_git_status():
         response = input("是否继续? (y/N): ")
         if response.lower() != 'y':
             return False
-
+    
     # 获取版本信息
     latest_tag = get_latest_tag()
     all_tags = get_all_tags()
 
-    print(f"[信息] Git标签信息:")
+    print(f"📦 Git标签信息:")
     if latest_tag:
         print(f"   最新标签: {latest_tag}")
     else:
@@ -179,7 +179,7 @@ def main():
     # 建议版本号
     suggestions = suggest_next_version()
     if isinstance(suggestions, dict):
-        print(f"\n[建议] 建议的版本号:")
+        print(f"\n💡 建议的版本号:")
         print(f"   补丁版本 (bug修复): {suggestions['patch']}")
         print(f"   次要版本 (新功能): {suggestions['minor']}")
         print(f"   主要版本 (重大更新): {suggestions['major']}")
@@ -204,7 +204,7 @@ def main():
         elif choice == '4':
             version = input("请输入版本号 (格式: v2.1.2): ").strip()
             if not validate_version(version):
-                print("[错误] 版本号格式错误，应为 vX.Y.Z 格式")
+                print("❌ 版本号格式错误，应为 vX.Y.Z 格式")
                 return False
         else:
             print("取消发布")
@@ -218,14 +218,14 @@ def main():
         if choice == '1':
             version = input("请输入版本号 (格式: v2.1.2): ").strip()
             if not validate_version(version):
-                print("[错误] 版本号格式错误，应为 vX.Y.Z 格式")
+                print("❌ 版本号格式错误，应为 vX.Y.Z 格式")
                 return False
         else:
             print("取消发布")
             return False
-
+    
     # 确认发布
-    print(f"\n[信息] 发布信息:")
+    print(f"\n📋 发布信息:")
     print(f"版本号: {version}")
     print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("\n发布流程:")
@@ -234,26 +234,26 @@ def main():
     print("3. 触发GitHub Actions自动构建")
     print("4. 创建GitHub Release")
     print("5. 上传构建的ZIP文件")
-
+    
     confirm = input(f"\n确认发布 {version}? (y/N): ")
     if confirm.lower() != 'y':
         print("取消发布")
         return False
-
+    
     # 创建标签并推送
-    print(f"\n[标签] 创建标签 {version}...")
+    print(f"\n🏷️ 创建标签 {version}...")
     if not create_tag_and_push(version):
         return False
-
+    
     print("\n" + "=" * 60)
-    print("[成功] 发布流程已启动！")
+    print("🎉 发布流程已启动！")
     print("=" * 60)
-    print("[后续] 后续步骤:")
+    print("📋 后续步骤:")
     print("1. GitHub Actions 正在自动构建...")
     print("2. 构建完成后会自动创建 Release")
     print("3. 请访问 GitHub 仓库查看发布状态")
-    print("\n[链接] GitHub Actions: https://github.com/YOUR_USERNAME/YOUR_REPO/actions")
-    print("[链接] Releases: https://github.com/YOUR_USERNAME/YOUR_REPO/releases")
+    print("\n🔗 GitHub Actions: https://github.com/YOUR_USERNAME/YOUR_REPO/actions")
+    print("🔗 Releases: https://github.com/YOUR_USERNAME/YOUR_REPO/releases")
     print("=" * 60)
     
     return True
@@ -267,7 +267,7 @@ if __name__ == "__main__":
         print("\n\n用户取消操作")
         sys.exit(1)
     except Exception as e:
-        print(f"\n[错误] 发布过程中出现错误: {e}")
+        print(f"\n❌ 发布过程中出现错误: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -267,7 +267,7 @@ if __name__ == "__main__":
         print("\n\n用户取消操作")
         sys.exit(1)
     except Exception as e:
-        print(f"\n[错误] 发布过程中出现错误: {e}")
+        print(f"\n❌ 发布过程中出现错误: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

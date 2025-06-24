@@ -13,25 +13,30 @@ import subprocess
 import re
 from datetime import datetime
 
-# 设置UTF-8编码
-import locale
-import codecs
-
-# 强制设置UTF-8编码
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-
-# Windows系统编码处理
+# 设置编码处理
 if sys.platform.startswith('win'):
     try:
         # 设置控制台代码页为UTF-8
         os.system('chcp 65001 > nul 2>&1')
 
-        # 重新配置标准输出流为UTF-8
+        # 重新配置标准输出流
         import io
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     except Exception:
+        # 如果设置失败，使用兼容模式
         pass
+
+def safe_print(text):
+    """安全的打印函数，处理编码问题"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 如果Unicode字符无法显示，使用ASCII替代
+        text = text.encode('ascii', errors='replace').decode('ascii')
+        print(text)
 
 def get_version_from_git():
     """从Git标签获取版本号"""

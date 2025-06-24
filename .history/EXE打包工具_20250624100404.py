@@ -13,25 +13,30 @@ import subprocess
 import re
 from datetime import datetime
 
-# 设置UTF-8编码
-import locale
-import codecs
-
-# 强制设置UTF-8编码
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-
-# Windows系统编码处理
+# 设置编码处理
 if sys.platform.startswith('win'):
     try:
         # 设置控制台代码页为UTF-8
         os.system('chcp 65001 > nul 2>&1')
 
-        # 重新配置标准输出流为UTF-8
+        # 重新配置标准输出流
         import io
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     except Exception:
+        # 如果设置失败，使用兼容模式
         pass
+
+def safe_print(text):
+    """安全的打印函数，处理编码问题"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 如果Unicode字符无法显示，使用ASCII替代
+        text = text.encode('ascii', errors='replace').decode('ascii')
+        print(text)
 
 def get_version_from_git():
     """从Git标签获取版本号"""
@@ -42,7 +47,7 @@ def get_version_from_git():
 
         if result.returncode == 0:
             version = result.stdout.strip()
-            print(f"检测到Git标签: {version}")
+            safe_print(f"检测到Git标签: {version}")
             return version
 
         # 如果没有当前标签，获取最新标签
@@ -51,15 +56,15 @@ def get_version_from_git():
 
         if result.returncode == 0:
             version = result.stdout.strip()
-            print(f"使用最新Git标签: {version}")
+            safe_print(f"使用最新Git标签: {version}")
             return version
 
         # 如果没有任何标签，使用默认版本
-        print("未找到Git标签，使用默认版本")
+        safe_print("未找到Git标签，使用默认版本")
         return "v2.1.1"
 
     except Exception as e:
-        print(f"获取Git版本号失败: {e}")
+        safe_print(f"获取Git版本号失败: {e}")
         return "v2.1.1"
 
 def check_pyinstaller():
@@ -355,9 +360,9 @@ def cleanup():
 
 def main():
     """主函数"""
-    print("=" * 60)
-    print("京东茅台秒杀系统 - Windows EXE打包工具")
-    print("=" * 60)
+    safe_print("=" * 60)
+    safe_print("京东茅台秒杀系统 - Windows EXE打包工具")
+    safe_print("=" * 60)
 
     # 检查当前目录
     if not os.path.exists("main.py"):

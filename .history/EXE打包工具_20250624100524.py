@@ -42,7 +42,7 @@ def get_version_from_git():
 
         if result.returncode == 0:
             version = result.stdout.strip()
-            print(f"检测到Git标签: {version}")
+            safe_print(f"检测到Git标签: {version}")
             return version
 
         # 如果没有当前标签，获取最新标签
@@ -51,15 +51,15 @@ def get_version_from_git():
 
         if result.returncode == 0:
             version = result.stdout.strip()
-            print(f"使用最新Git标签: {version}")
+            safe_print(f"使用最新Git标签: {version}")
             return version
 
         # 如果没有任何标签，使用默认版本
-        print("未找到Git标签，使用默认版本")
+        safe_print("未找到Git标签，使用默认版本")
         return "v2.1.1"
 
     except Exception as e:
-        print(f"获取Git版本号失败: {e}")
+        safe_print(f"获取Git版本号失败: {e}")
         return "v2.1.1"
 
 def check_pyinstaller():
