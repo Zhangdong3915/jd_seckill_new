@@ -22,14 +22,7 @@ if __name__ == '__main__':
     print(a)
 
     jd_seckill = JdSeckill()
-
-    # 启动时进行配置检查和设置
-    print("\n🚀 系统初始化...")
-    if not jd_seckill.check_and_fix_config():
-        print("\n❌ 配置不完整，请完善配置后重新运行程序")
-        sys.exit(1)
-
-    choice_function = input('\n请选择:')
+    choice_function = input('请选择:')
     if choice_function == '1':
         jd_seckill.reserve()
     elif choice_function == '2':

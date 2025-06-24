@@ -1994,41 +1994,24 @@ class JdSeckill(object):
             print("\n📱 微信通知配置检查")
             print("-" * 40)
 
-            # 询问用户是否需要微信通知
-            print("微信通知可以在抢购成功或失败时发送消息到您的微信")
-            print("需要使用Server酱服务，获取SCKEY后即可使用")
+            # 检查是否启用了微信通知
+            messenger_enable = global_config.getRaw('messenger', 'enable') or 'false'
 
-            while True:
-                choice = input("\n是否启用微信通知？(yes/no): ").strip().lower()
-                if choice in ['yes', 'y', '是', '1']:
-                    # 用户选择启用微信通知
-                    print("\n✅ 已选择启用微信通知")
+            if messenger_enable.lower() != 'true':
+                print("ℹ️ 微信通知已禁用，跳过SCKEY配置")
+                return
 
-                    # 检查SCKEY配置
-                    sckey = self.secure_config.get_sckey(
-                        required=True,
-                        allow_input=True,
-                        interactive=True
-                    )
+            # 检查SCKEY配置
+            sckey = self.secure_config.get_sckey(
+                required=False,
+                allow_input=True,
+                interactive=True
+            )
 
-                    if sckey:
-                        # 更新配置：启用通知并保存SCKEY
-                        self.secure_config.update_messenger_config(enable=True, sckey=sckey)
-                        print("✅ 微信通知配置完成")
-                    else:
-                        # SCKEY配置失败，禁用通知
-                        self.secure_config.update_messenger_config(enable=False, sckey=None)
-                        print("⚠️ SCKEY配置失败，已禁用微信通知")
-                    break
-
-                elif choice in ['no', 'n', '否', '0']:
-                    # 用户选择不启用微信通知
-                    print("✅ 已选择禁用微信通知")
-                    self.secure_config.update_messenger_config(enable=False, sckey=None)
-                    break
-
-                else:
-                    print("请输入 yes 或 no")
+            if sckey:
+                print("✅ 微信通知配置完成")
+            else:
+                print("⚠️ 微信通知配置不完整，将无法发送通知")
 
         except Exception as e:
             logger.error(f'微信通知配置失败: {e}')

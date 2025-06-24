@@ -446,33 +446,6 @@ class JdSeckill(object):
             logger.error(f'设备参数更新失败: {e}')
             return False
 
-    def _collect_device_fingerprint(self):
-        """收集设备指纹参数"""
-        try:
-            if not self.device_collector:
-                logger.warning('设备指纹收集器未初始化，跳过收集')
-                return
-
-            print("\n🔍 正在收集设备指纹参数...")
-
-            # 从cookies更新参数
-            self.device_collector.update_from_cookies()
-
-            # 收集设备参数
-            eid, fp = self.device_collector.collect_device_params()
-
-            # 验证参数有效性
-            if self.device_collector.validate_params():
-                # 更新到配置文件并热加载
-                self.update_device_params_and_reload(eid, fp)
-            else:
-                logger.warning('设备指纹参数验证失败，保持原有配置')
-
-        except Exception as e:
-            logger.error(f'设备指纹收集失败: {e}')
-            print(f"⚠️ 设备指纹收集失败: {e}")
-            print("程序将继续使用现有配置")
-
     def _simple_login_check(self):
         """简单的登录状态检查"""
         try:
@@ -527,9 +500,6 @@ class JdSeckill(object):
 
             self.nick_name = self.get_username()
             self.spider_session.save_cookies_to_local(self.nick_name)
-
-            # 自动收集设备指纹参数
-            self._collect_device_fingerprint()
 
             # 发送登录成功通知
             notification_data = {
@@ -1882,20 +1852,17 @@ class JdSeckill(object):
 
             eid = global_config.getRaw('config', 'eid')
             if not eid or eid == '':
-                issues.append("风控参数 eid 未配置（登录后将自动获取）")
+                issues.append("风控参数 eid 未配置")
 
             fp = global_config.getRaw('config', 'fp')
             if not fp or fp == '':
-                issues.append("风控参数 fp 未配置（登录后将自动获取）")
+                issues.append("风控参数 fp 未配置")
 
             # 检查时间格式
             try:
                 datetime.strptime(buy_time, "%H:%M:%S.%f")
             except:
                 issues.append("购买时间格式不正确，应为 HH:MM:SS.fff")
-
-            # 检查和配置敏感信息
-            self._check_and_setup_sensitive_config()
 
             if issues:
                 print("❌ 发现配置问题:")
@@ -1905,7 +1872,7 @@ class JdSeckill(object):
                 print("\n📖 配置说明:")
                 print("   • sku_id: 商品ID，可从商品页面URL获取")
                 print("   • buy_time: 抢购时间，格式如 09:59:59.500")
-                print("   • eid/fp: 京东风控参数，登录后自动获取")
+                print("   • eid/fp: 京东风控参数，需要从浏览器获取")
                 print("   • 详细配置方法请参考 README.md")
 
                 return False
@@ -1916,123 +1883,6 @@ class JdSeckill(object):
         except Exception as e:
             print(f"❌ 配置检查失败: {e}")
             return False
-
-    def _check_and_setup_sensitive_config(self):
-        """检查和设置敏感配置"""
-        try:
-            if not self.secure_config:
-                logger.warning('安全配置管理器未初始化，跳过敏感配置检查')
-                return
-
-            print("\n🔐 检查敏感配置...")
-
-            # 检查支付密码
-            self._setup_payment_password()
-
-            # 检查微信通知配置
-            self._setup_wechat_notification()
-
-            # 热加载配置
-            self.reload_config()
-
-        except Exception as e:
-            logger.error(f'敏感配置检查失败: {e}')
-            print(f"⚠️ 敏感配置检查失败: {e}")
-
-    def _setup_payment_password(self):
-        """设置支付密码"""
-        try:
-            print("\n💳 支付密码配置检查")
-            print("-" * 40)
-
-            # 检查是否已配置支付密码
-            payment_pwd = self.secure_config.get_secure_value(
-                section='account',
-                key='payment_pwd',
-                env_var_name='JD_PAYMENT_PWD',
-                prompt_text=None,
-                allow_input=False
-            )
-
-            if payment_pwd:
-                print("✅ 支付密码已配置")
-                return
-
-            # 询问用户是否需要配置支付密码
-            print("⚠️ 支付密码未配置")
-            print("支付密码用于自动支付订单（当使用京券或京豆时需要）")
-            print("如果您的账户没有京券或京豆，可以跳过此配置")
-
-            while True:
-                choice = input("\n是否现在配置支付密码？(yes/no): ").strip().lower()
-                if choice in ['yes', 'y', '是', '1']:
-                    # 用户选择配置支付密码
-                    password = self.secure_config.get_secure_value(
-                        section='account',
-                        key='payment_pwd',
-                        env_var_name='JD_PAYMENT_PWD',
-                        prompt_text='请输入京东支付密码（6位数字）',
-                        allow_input=True
-                    )
-                    if password:
-                        print("✅ 支付密码配置完成")
-                    break
-                elif choice in ['no', 'n', '否', '0']:
-                    print("⚠️ 已跳过支付密码配置")
-                    print("如需配置，可设置环境变量 JD_PAYMENT_PWD 或在config.ini中配置")
-                    break
-                else:
-                    print("请输入 yes 或 no")
-
-        except Exception as e:
-            logger.error(f'支付密码配置失败: {e}')
-            print(f"❌ 支付密码配置失败: {e}")
-
-    def _setup_wechat_notification(self):
-        """设置微信通知"""
-        try:
-            print("\n📱 微信通知配置检查")
-            print("-" * 40)
-
-            # 询问用户是否需要微信通知
-            print("微信通知可以在抢购成功或失败时发送消息到您的微信")
-            print("需要使用Server酱服务，获取SCKEY后即可使用")
-
-            while True:
-                choice = input("\n是否启用微信通知？(yes/no): ").strip().lower()
-                if choice in ['yes', 'y', '是', '1']:
-                    # 用户选择启用微信通知
-                    print("\n✅ 已选择启用微信通知")
-
-                    # 检查SCKEY配置
-                    sckey = self.secure_config.get_sckey(
-                        required=True,
-                        allow_input=True,
-                        interactive=True
-                    )
-
-                    if sckey:
-                        # 更新配置：启用通知并保存SCKEY
-                        self.secure_config.update_messenger_config(enable=True, sckey=sckey)
-                        print("✅ 微信通知配置完成")
-                    else:
-                        # SCKEY配置失败，禁用通知
-                        self.secure_config.update_messenger_config(enable=False, sckey=None)
-                        print("⚠️ SCKEY配置失败，已禁用微信通知")
-                    break
-
-                elif choice in ['no', 'n', '否', '0']:
-                    # 用户选择不启用微信通知
-                    print("✅ 已选择禁用微信通知")
-                    self.secure_config.update_messenger_config(enable=False, sckey=None)
-                    break
-
-                else:
-                    print("请输入 yes 或 no")
-
-        except Exception as e:
-            logger.error(f'微信通知配置失败: {e}')
-            print(f"❌ 微信通知配置失败: {e}")
 
     def auto_config_wizard(self):
         """自动配置向导"""

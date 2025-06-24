@@ -141,60 +141,7 @@ class SecureConfigManager:
     def save_config(self):
         """保存配置文件（保留注释）"""
         self._save_config_with_comments()
-
-    def _save_config_with_comments(self):
-        """保存配置文件并保留注释"""
-        try:
-            # 读取原始文件内容
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            # 创建新的文件内容
-            new_lines = []
-            current_section = None
-
-            for line in lines:
-                stripped_line = line.strip()
-
-                # 检查是否是section标题
-                if stripped_line.startswith('[') and stripped_line.endswith(']'):
-                    current_section = stripped_line[1:-1]
-                    new_lines.append(line)
-                    continue
-
-                # 检查是否是注释或空行
-                if stripped_line.startswith('#') or not stripped_line:
-                    new_lines.append(line)
-                    continue
-
-                # 检查是否是配置项
-                if '=' in stripped_line and current_section:
-                    key = stripped_line.split('=')[0].strip()
-
-                    # 检查配置是否已更新
-                    if self.config.has_option(current_section, key):
-                        new_value = self.config.get(current_section, key)
-                        # 保持原有的格式，只更新值
-                        if '=' in line:
-                            prefix = line.split('=')[0] + '= '
-                            new_lines.append(f"{prefix}{new_value}\n")
-                        else:
-                            new_lines.append(line)
-                    else:
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-
-            # 写入更新后的内容
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-
-        except Exception as e:
-            print(f"⚠️ 保留注释保存失败，使用标准方式保存: {e}")
-            # 如果保留注释失败，使用标准方式保存
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                self.config.write(f)
-
+    
     def get_payment_password(self, required=True, allow_input=True):
         """获取支付密码"""
         password = self.get_secure_value(
@@ -327,35 +274,4 @@ class SecureConfigManager:
             self.save_config()
             print("✅ 设备参数已自动更新到配置文件")
         
-        return updated
-
-    def update_messenger_config(self, enable=None, sckey=None):
-        """更新微信通知配置"""
-        updated = False
-
-        if enable is not None:
-            old_enable = self.config.get('messenger', 'enable') if self.config.has_option('messenger', 'enable') else "false"
-            new_enable = "true" if enable else "false"
-            if old_enable != new_enable:
-                self.config.set('messenger', 'enable', new_enable)
-                print(f"✅ 更新微信通知开关: {new_enable}")
-                updated = True
-
-        if sckey is not None:
-            if sckey:
-                # 加密并保存SCKEY
-                encrypted_sckey = self.encrypt_value(sckey)
-                self.config.set('messenger', 'sckey', encrypted_sckey)
-                print("✅ 更新SCKEY配置")
-                updated = True
-            else:
-                # 清空SCKEY
-                self.config.set('messenger', 'sckey', '')
-                print("✅ 清空SCKEY配置")
-                updated = True
-
-        if updated:
-            self.save_config()
-            print("✅ 微信通知配置已更新")
-
         return updated

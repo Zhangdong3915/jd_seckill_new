@@ -325,15 +325,13 @@ if __name__ == "__main__":
     try:
         success = main()
         if success:
-            print("\n✅ 打包完成，程序自动退出")
+            input("\n按回车键退出...")
         else:
-            print("\n❌ 打包失败，程序自动退出")
-            sys.exit(1)
+            input("\n打包失败，按回车键退出...")
     except KeyboardInterrupt:
         print("\n\n用户取消操作")
-        sys.exit(1)
     except Exception as e:
         print(f"\n❌ 打包过程中出现未知错误: {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
+        input("\n按回车键退出...")

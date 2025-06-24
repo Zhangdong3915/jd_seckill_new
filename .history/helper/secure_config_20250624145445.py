@@ -328,34 +328,3 @@ class SecureConfigManager:
             print("✅ 设备参数已自动更新到配置文件")
         
         return updated
-
-    def update_messenger_config(self, enable=None, sckey=None):
-        """更新微信通知配置"""
-        updated = False
-
-        if enable is not None:
-            old_enable = self.config.get('messenger', 'enable') if self.config.has_option('messenger', 'enable') else "false"
-            new_enable = "true" if enable else "false"
-            if old_enable != new_enable:
-                self.config.set('messenger', 'enable', new_enable)
-                print(f"✅ 更新微信通知开关: {new_enable}")
-                updated = True
-
-        if sckey is not None:
-            if sckey:
-                # 加密并保存SCKEY
-                encrypted_sckey = self.encrypt_value(sckey)
-                self.config.set('messenger', 'sckey', encrypted_sckey)
-                print("✅ 更新SCKEY配置")
-                updated = True
-            else:
-                # 清空SCKEY
-                self.config.set('messenger', 'sckey', '')
-                print("✅ 清空SCKEY配置")
-                updated = True
-
-        if updated:
-            self.save_config()
-            print("✅ 微信通知配置已更新")
-
-        return updated
