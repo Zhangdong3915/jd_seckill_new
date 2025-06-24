@@ -1674,32 +1674,10 @@ class JdSeckill(object):
             print(f"\n{icon} {title}")
             print(f"   {message}")
 
-            # 微信通知（如果启用且配置了SCKEY）
+            # 微信通知（如果启用）
             if global_config.getRaw('messenger', 'enable') == 'true':
-                # 检查是否有有效的SCKEY配置
-                sckey = None
-                if self.secure_config:
-                    sckey = self.secure_config.get_secure_value(
-                        section='messenger',
-                        key='sckey',
-                        env_var_name='JD_SCKEY',
-                        prompt_text=None,
-                        allow_input=False
-                    )
-
-                if not sckey:
-                    # 备用方案：从配置文件直接读取
-                    try:
-                        sckey = global_config.getRaw('messenger', 'sckey')
-                    except:
-                        sckey = None
-
-                if sckey and sckey.strip():
-                    full_message = f"{title}\n{message}"
-                    send_wechat(full_message)
-                    logger.info('微信通知发送成功')
-                else:
-                    logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
+                full_message = f"{title}\n{message}"
+                send_wechat(full_message)
 
             # 日志记录
             if notification_type == "error":

@@ -1674,32 +1674,10 @@ class JdSeckill(object):
             print(f"\n{icon} {title}")
             print(f"   {message}")
 
-            # 微信通知（如果启用且配置了SCKEY）
+            # 微信通知（如果启用）
             if global_config.getRaw('messenger', 'enable') == 'true':
-                # 检查是否有有效的SCKEY配置
-                sckey = None
-                if self.secure_config:
-                    sckey = self.secure_config.get_secure_value(
-                        section='messenger',
-                        key='sckey',
-                        env_var_name='JD_SCKEY',
-                        prompt_text=None,
-                        allow_input=False
-                    )
-
-                if not sckey:
-                    # 备用方案：从配置文件直接读取
-                    try:
-                        sckey = global_config.getRaw('messenger', 'sckey')
-                    except:
-                        sckey = None
-
-                if sckey and sckey.strip():
-                    full_message = f"{title}\n{message}"
-                    send_wechat(full_message)
-                    logger.info('微信通知发送成功')
-                else:
-                    logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
+                full_message = f"{title}\n{message}"
+                send_wechat(full_message)
 
             # 日志记录
             if notification_type == "error":
@@ -1722,31 +1700,9 @@ class JdSeckill(object):
             print(f"\n{notification_data.get('title', '通知')}")
             print(f"   {notification_data.get('summary', '')}")
 
-            # 微信通知（如果启用且配置了SCKEY）
+            # 微信通知（如果启用）
             if global_config.getRaw('messenger', 'enable') == 'true':
-                # 检查是否有有效的SCKEY配置
-                sckey = None
-                if self.secure_config:
-                    sckey = self.secure_config.get_secure_value(
-                        section='messenger',
-                        key='sckey',
-                        env_var_name='JD_SCKEY',
-                        prompt_text=None,
-                        allow_input=False
-                    )
-
-                if not sckey:
-                    # 备用方案：从配置文件直接读取
-                    try:
-                        sckey = global_config.getRaw('messenger', 'sckey')
-                    except:
-                        sckey = None
-
-                if sckey and sckey.strip():
-                    send_wechat(markdown_message)
-                    logger.info('微信通知发送成功')
-                else:
-                    logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
+                send_wechat(markdown_message)
 
             # 日志记录
             logger.info(f"详细通知: {notification_data.get('title', '通知')}")
@@ -2075,10 +2031,6 @@ class JdSeckill(object):
     def _setup_wechat_notification(self):
         """设置微信通知"""
         try:
-            # 检查是否已经询问过用户
-            if self.config_setup_completed['wechat_notification']:
-                return
-
             print("\n📱 微信通知配置检查")
             print("-" * 40)
 
@@ -2094,7 +2046,6 @@ class JdSeckill(object):
             if existing_sckey:
                 print("✅ 检测到已配置的SCKEY，微信通知已启用")
                 self.secure_config.update_messenger_config(enable=True, sckey=existing_sckey)
-                self.config_setup_completed['wechat_notification'] = True
                 return
 
             # 询问用户是否需要微信通知
@@ -2117,7 +2068,6 @@ class JdSeckill(object):
                             # 更新配置：启用通知并保存SCKEY
                             self.secure_config.update_messenger_config(enable=True, sckey=sckey)
                             print("✅ 微信通知配置完成")
-                            self.config_setup_completed['wechat_notification'] = True
                             break
                         else:
                             print("❌ SCKEY格式不正确，请重新输入")
@@ -2130,7 +2080,6 @@ class JdSeckill(object):
                     # 用户选择不启用微信通知
                     print("✅ 已选择禁用微信通知")
                     self.secure_config.update_messenger_config(enable=False, sckey=None)
-                    self.config_setup_completed['wechat_notification'] = True
                     break
 
                 else:
@@ -2139,7 +2088,6 @@ class JdSeckill(object):
         except Exception as e:
             logger.error(f'微信通知配置失败: {e}')
             print(f"❌ 微信通知配置失败: {e}")
-            self.config_setup_completed['wechat_notification'] = True  # 即使失败也标记为已处理
 
     def auto_config_wizard(self):
         """自动配置向导"""
