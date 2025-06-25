@@ -124,22 +124,37 @@ def wait_some_time():
         time.sleep(base_interval * random_factor)
 
 
-def send_wechat(message):
+def send_wechat(message, secure_config=None):
     """推送信息到微信"""
-    # 使用安全配置管理器获取解密后的SCKEY
-    try:
-        from helper.secure_config import SecureConfigManager
-        secure_config = SecureConfigManager()
-        sckey = secure_config.get_secure_value(
-            section='messenger',
-            key='sckey',
-            env_var_name='JD_SCKEY',
-            prompt_text=None,
-            allow_input=False
-        )
-    except:
-        # 备用方案：直接从配置文件读取（可能是加密的）
-        sckey = global_config.getRaw('messenger', 'sckey')
+    # 优先使用传入的安全配置管理器
+    if secure_config:
+        try:
+            sckey = secure_config.get_secure_value(
+                section='messenger',
+                key='sckey',
+                env_var_name='JD_SCKEY',
+                prompt_text=None,
+                allow_input=False
+            )
+        except Exception as e:
+            logger.warning(f'使用传入的安全配置管理器获取SCKEY失败: {e}')
+            sckey = None
+    else:
+        # 使用新的安全配置管理器获取解密后的SCKEY
+        try:
+            from helper.secure_config import SecureConfigManager
+            temp_secure_config = SecureConfigManager()
+            sckey = temp_secure_config.get_secure_value(
+                section='messenger',
+                key='sckey',
+                env_var_name='JD_SCKEY',
+                prompt_text=None,
+                allow_input=False
+            )
+        except Exception as e:
+            logger.warning(f'创建新的安全配置管理器获取SCKEY失败: {e}')
+            # 备用方案：直接从配置文件读取（可能是加密的）
+            sckey = global_config.getRaw('messenger', 'sckey')
 
     if not sckey:
         logger.warning('SCKEY未配置，无法发送微信通知')

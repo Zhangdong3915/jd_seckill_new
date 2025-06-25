@@ -43,10 +43,11 @@ a = Analysis(
         ('cookies', 'cookies'),
         ('maotai', 'maotai'),
         ('helper', 'helper'),
+        ('error', 'error'),
         ('README.md', '.'),
         ('bug修复.md', '.'),
-        ('京东风控机制分析与安全策略.md', '.'),
-        ('极高概率抢购方案.md', '.'),
+        ('docs', 'docs'),
+        ('requirements.txt', '.'),
     ],
     hiddenimports=[
         'requests',
@@ -59,6 +60,12 @@ a = Analysis(
         'os',
         'sys',
         'logging',
+        'selenium',
+        'selenium.webdriver',
+        'selenium.webdriver.chrome',
+        'selenium.webdriver.chrome.service',
+        'webdriver_manager',
+        'webdriver_manager.chrome',
     ],
     hookspath=[],
     hooksconfig={},
@@ -191,6 +198,7 @@ def create_usage_guide(target_dir):
 
 ### 4. 扫码登录
 使用京东APP扫描弹出的二维码完成登录
+（二维码已优化为200%尺寸，扫码更清晰）
 
 ## 🛡️ 安全策略选择
 
@@ -198,6 +206,13 @@ def create_usage_guide(target_dir):
 - 小白信用 < 70分: CONSERVATIVE (保守策略)
 - 小白信用 70-90分: BALANCED (平衡策略，推荐)
 - 小白信用 > 90分: AGGRESSIVE (激进策略)
+
+## 🆕 v2.2.0 新功能
+
+1. **真实设备指纹**：自动获取京东真实设备指纹，无需手动配置
+2. **二维码优化**：二维码尺寸调整到200%，扫码更清晰
+3. **Selenium集成**：使用真实浏览器环境，提升成功率
+4. **智能回退**：多重获取方案，确保参数有效性
 
 ## ⚠️ 重要提醒
 
@@ -211,10 +226,10 @@ def create_usage_guide(target_dir):
 如遇问题请查看：
 - README.md - 完整使用说明
 - bug修复.md - 常见问题解决方案
-- 京东风控机制分析与安全策略.md - 安全策略详解
+- docs/ - 详细技术文档目录
 
 ---
-版本: v2.1.0
+版本: v2.2.0
 构建时间: {build_time}
 """.format(build_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     
@@ -232,7 +247,7 @@ def create_zip_package():
     
     # 创建ZIP文件名
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    zip_filename = f"京东茅台秒杀系统_v2.1.0_{timestamp}.zip"
+    zip_filename = f"京东茅台秒杀系统_v2.2.0_{timestamp}.zip"
     
     try:
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:

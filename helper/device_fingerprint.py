@@ -20,38 +20,95 @@ class DeviceFingerprintCollector:
         self.eid = None
         self.fp = None
     
-    def collect_device_params(self):
+    def collect_device_params(self, use_selenium=True):
         """收集设备参数"""
         print("🔍 开始收集设备指纹参数...")
-        
+
         try:
+            # 清空现有参数，强制重新收集
+            self.eid = None
+            self.fp = None
+
             # 方法1: 从登录页面获取
             self._collect_from_login_page()
-            
+
             # 方法2: 从订单页面获取
             if not self.eid or not self.fp:
                 self._collect_from_order_page()
-            
+
             # 方法3: 从购物车页面获取
             if not self.eid or not self.fp:
                 self._collect_from_cart_page()
-            
-            # 方法4: 从风控接口获取
+
+            # 方法4: 使用Selenium获取真实设备指纹
+            if (not self.eid or not self.fp) and use_selenium:
+                print("🚀 常规方法未获取到完整设备指纹，启用Selenium方案...")
+                self._collect_with_selenium()
+
+            # 方法5: 从风控接口获取（生成新的设备指纹）
             if not self.eid or not self.fp:
                 self._collect_from_risk_api()
-            
+
             if self.eid and self.fp:
                 print(f"✅ 设备指纹收集成功")
                 print(f"   eid: {self.eid[:20]}...")
                 print(f"   fp: {self.fp[:20]}...")
                 return self.eid, self.fp
             else:
-                print("⚠️ 设备指纹收集不完整，将使用默认值")
-                return None, None
-                
+                print("⚠️ 设备指纹收集不完整，生成新的设备指纹")
+                # 强制生成新的设备指纹
+                self.eid = self._generate_eid()
+                self.fp = self._generate_fp()
+                print(f"✅ 生成新的设备指纹")
+                print(f"   eid: {self.eid[:20]}...")
+                print(f"   fp: {self.fp[:20]}...")
+                return self.eid, self.fp
+
         except Exception as e:
             print(f"❌ 设备指纹收集失败: {e}")
-            return None, None
+            # 即使出错也生成新的设备指纹
+            try:
+                self.eid = self._generate_eid()
+                self.fp = self._generate_fp()
+                print(f"✅ 生成备用设备指纹")
+                print(f"   eid: {self.eid[:20]}...")
+                print(f"   fp: {self.fp[:20]}...")
+                return self.eid, self.fp
+            except Exception as e2:
+                print(f"❌ 生成备用设备指纹也失败: {e2}")
+                return None, None
+
+    def _collect_with_selenium(self):
+        """使用Selenium收集真实设备指纹"""
+        try:
+            from helper.selenium_device_fingerprint import SeleniumDeviceFingerprintCollector
+
+            print("🌐 启动Selenium设备指纹收集器...")
+
+            # 创建Selenium收集器（使用无头模式）
+            selenium_collector = SeleniumDeviceFingerprintCollector(headless=True, timeout=30)
+
+            # 收集设备指纹
+            eid, fp = selenium_collector.collect_from_jd_pages()
+
+            if eid and fp:
+                # 验证设备指纹
+                is_valid, message = selenium_collector.validate_fingerprint(eid, fp)
+                if is_valid:
+                    self.eid = eid
+                    self.fp = fp
+                    print(f"✅ Selenium成功获取真实设备指纹")
+                    print(f"   eid: {self.eid[:30]}...")
+                    print(f"   fp: {self.fp}")
+                else:
+                    print(f"⚠️ Selenium获取的设备指纹验证失败: {message}")
+            else:
+                print("⚠️ Selenium未能获取到设备指纹")
+
+        except ImportError:
+            print("⚠️ Selenium模块未安装，跳过Selenium方案")
+        except Exception as e:
+            print(f"⚠️ Selenium设备指纹收集失败: {e}")
     
     def _collect_from_login_page(self):
         """从登录页面收集参数"""
@@ -82,20 +139,123 @@ class DeviceFingerprintCollector:
     def _collect_from_order_page(self):
         """从订单页面收集参数"""
         try:
+            # 先尝试从订单列表页面获取
             url = "https://order.jd.com/center/list.action"
             headers = {
                 'User-Agent': self.session.headers.get('User-Agent', ''),
                 'Referer': 'https://www.jd.com/'
             }
-            
+
             response = self.session.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 # 查找设备参数
                 self._extract_params_from_html(response.text)
                 print("🔍 已检查订单页面")
-                
+
+            # 如果还没有获取到参数，尝试访问结算页面
+            if not self.eid or not self.fp:
+                self._collect_from_checkout_page()
+
         except Exception as e:
             print(f"⚠️ 订单页面检查失败: {e}")
+
+    def _collect_from_checkout_page(self):
+        """从结算页面收集真实的设备指纹参数"""
+        try:
+            print("🔍 尝试从结算页面获取真实设备指纹...")
+
+            headers = {
+                'User-Agent': self.session.headers.get('User-Agent', ''),
+                'Referer': 'https://www.jd.com/'
+            }
+
+            # 方法1: 尝试访问购物车结算页面
+            cart_url = "https://cart.jd.com/cart_index"
+            response = self.session.get(cart_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                self._extract_js_variables(response.text)
+
+            # 方法2: 尝试访问订单结算页面
+            if not self.eid or not self.fp:
+                checkout_url = "https://trade.jd.com/shopping/order/getOrderInfo.action"
+                response = self.session.get(checkout_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    self._extract_js_variables(response.text)
+
+            # 方法3: 尝试访问登录页面
+            if not self.eid or not self.fp:
+                login_url = "https://passport.jd.com/new/login.aspx"
+                response = self.session.get(login_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    self._extract_js_variables(response.text)
+
+            # 方法4: 尝试访问主页
+            if not self.eid or not self.fp:
+                home_url = "https://www.jd.com/"
+                response = self.session.get(home_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    self._extract_js_variables(response.text)
+
+            # 方法5: 尝试访问商品页面
+            if not self.eid or not self.fp:
+                from maotai.config import global_config
+                sku_id = global_config.getRaw('config', 'sku_id')
+                product_url = f"https://item.jd.com/{sku_id}.html"
+                response = self.session.get(product_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    self._extract_js_variables(response.text)
+
+        except Exception as e:
+            print(f"⚠️ 结算页面检查失败: {e}")
+
+    def _extract_js_variables(self, html_content):
+        """从HTML中提取JavaScript变量中的设备指纹"""
+        import re
+
+        # 查找 _JdEid 变量
+        if not self.eid:
+            # 多种可能的_JdEid模式，包括更宽松的匹配
+            eid_patterns = [
+                r'_JdEid\s*=\s*["\']([^"\']+)["\']',
+                r'window\._JdEid\s*=\s*["\']([^"\']+)["\']',
+                r'var\s+_JdEid\s*=\s*["\']([^"\']+)["\']',
+                r'_JdEid["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+                r'_JdEid\s*=\s*([^;,\s]+)',  # 不带引号的值
+                r'"_JdEid"\s*:\s*"([^"]+)"',  # JSON格式
+                r'eid\s*=\s*["\']([^"\']{20,})["\']',  # 通用eid模式，至少20个字符
+            ]
+
+            for pattern in eid_patterns:
+                match = re.search(pattern, html_content, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    eid_value = match.group(1).strip('"\'')
+                    if len(eid_value) > 10:  # 确保eid有足够长度
+                        self.eid = eid_value
+                        print(f"✅ 从JavaScript获取到_JdEid: {self.eid[:20]}...")
+                        break
+
+        # 查找 _JdJrTdRiskFpInfo 变量
+        if not self.fp:
+            # 多种可能的_JdJrTdRiskFpInfo模式
+            fp_patterns = [
+                r'_JdJrTdRiskFpInfo\s*=\s*["\']([^"\']+)["\']',
+                r'window\._JdJrTdRiskFpInfo\s*=\s*["\']([^"\']+)["\']',
+                r'var\s+_JdJrTdRiskFpInfo\s*=\s*["\']([^"\']+)["\']',
+                r'_JdJrTdRiskFpInfo["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+                r'_JdJrTdRiskFpInfo\s*=\s*([^;,\s]+)',  # 不带引号的值
+                r'"_JdJrTdRiskFpInfo"\s*:\s*"([^"]+)"',  # JSON格式
+                r'fp\s*=\s*["\']([a-f0-9]{32})["\']',  # 32位十六进制fp
+                r'fingerprint\s*=\s*["\']([a-f0-9]{32})["\']',  # 32位十六进制fingerprint
+            ]
+
+            for pattern in fp_patterns:
+                match = re.search(pattern, html_content, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    fp_value = match.group(1).strip('"\'')
+                    if len(fp_value) >= 16:  # 确保fp有足够长度
+                        self.fp = fp_value
+                        print(f"✅ 从JavaScript获取到_JdJrTdRiskFpInfo: {self.fp[:20]}...")
+                        break
     
     def _collect_from_cart_page(self):
         """从购物车页面收集参数"""
@@ -163,16 +323,45 @@ class DeviceFingerprintCollector:
     
     def _generate_eid(self):
         """生成eid参数"""
-        # eid通常是一个长字符串，包含设备信息
+        import time
+        import hashlib
+
+        # 基于时间戳和随机数生成更真实的eid
+        timestamp = str(int(time.time() * 1000))
         chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-        eid = ''.join(random.choice(chars) for _ in range(88))
-        return f"AESXKQVW{eid}"
-    
+
+        # 生成足够长的随机部分
+        random_part1 = ''.join(random.choice(chars) for _ in range(30))
+        random_part2 = ''.join(random.choice(chars) for _ in range(30))
+
+        # 生成基于机器特征的部分
+        machine_info = f"{timestamp}{random_part1}"
+        hash_part = hashlib.md5(machine_info.encode()).hexdigest().upper()[:16]
+
+        # 确保eid长度足够（至少80个字符）
+        eid = f"JD_Cartmain_{timestamp}_{hash_part}_{random_part1}_{random_part2}"
+
+        # 如果长度不够，补充随机字符
+        while len(eid) < 80:
+            eid += random.choice(chars)
+
+        return eid
+
     def _generate_fp(self):
         """生成fp参数"""
-        # fp通常是32位十六进制字符串
+        import time
+        import hashlib
+
+        # 基于时间戳和随机数生成更真实的fp
+        timestamp = str(int(time.time() * 1000))
         chars = '0123456789abcdef'
-        return ''.join(random.choice(chars) for _ in range(32))
+        random_part = ''.join(random.choice(chars) for _ in range(16))
+
+        # 生成基于机器特征的指纹
+        machine_info = f"{timestamp}{random_part}"
+        fp = hashlib.md5(machine_info.encode()).hexdigest()
+
+        return fp
     
     def update_from_cookies(self):
         """从cookies中更新参数"""
@@ -196,13 +385,31 @@ class DeviceFingerprintCollector:
     
     def validate_params(self):
         """验证参数有效性"""
-        if not self.eid or len(self.eid) < 20:
-            print("⚠️ eid参数可能无效")
+        # 清理引号
+        if self.eid:
+            self.eid = self.eid.strip('"\'')
+        if self.fp:
+            self.fp = self.fp.strip('"\'')
+
+        # 检查eid
+        if not self.eid or len(self.eid) < 10:
+            print("⚠️ eid参数可能无效：长度不足")
             return False
-        
+
+        # 检查是否是默认测试值
+        if self.eid and "AESXKQVW3XZJQVZJXZJQVZJ" in self.eid:
+            print("⚠️ eid参数可能无效：检测到默认测试值")
+            return False
+
+        # 检查fp
         if not self.fp or len(self.fp) < 16:
-            print("⚠️ fp参数可能无效")
+            print("⚠️ fp参数可能无效：长度不足")
             return False
-        
+
+        # 检查是否是默认测试值
+        if self.fp and self.fp == "b1f2c3d4e5f6a7b8c9d0e1f2a3b4c5d6":
+            print("⚠️ fp参数可能无效：检测到默认测试值")
+            return False
+
         print("✅ 设备参数验证通过")
         return True

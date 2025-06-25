@@ -208,7 +208,7 @@ class QrLogin:
         url = 'https://qr.m.jd.com/show'
         payload = {
             'appid': 133,
-            'size': 147,
+            'size': 294,  # 调整到200%尺寸 (147 * 2 = 294)
             't': str(int(time.time() * 1000)),
         }
         headers = {
@@ -478,7 +478,7 @@ class JdSeckill(object):
             logger.error(f'设备参数更新失败: {e}')
             return False
 
-    def _collect_device_fingerprint(self):
+    def _collect_device_fingerprint(self, use_selenium=True):
         """收集设备指纹参数"""
         try:
             if not self.device_collector:
@@ -490,13 +490,14 @@ class JdSeckill(object):
             # 从cookies更新参数
             self.device_collector.update_from_cookies()
 
-            # 收集设备参数
-            eid, fp = self.device_collector.collect_device_params()
+            # 收集设备参数（启用selenium支持）
+            eid, fp = self.device_collector.collect_device_params(use_selenium=use_selenium)
 
             # 验证参数有效性
             if self.device_collector.validate_params():
                 # 更新到配置文件并热加载
                 self.update_device_params_and_reload(eid, fp)
+                print("✅ 设备指纹参数已更新到配置文件")
             else:
                 logger.warning('设备指纹参数验证失败，保持原有配置')
 
@@ -564,6 +565,14 @@ class JdSeckill(object):
             self._collect_device_fingerprint()
 
             # 发送登录成功通知
+            # 确保使用最新的安全配置管理器
+            try:
+                from helper.secure_config import SecureConfigManager
+                self.secure_config = SecureConfigManager()
+                logger.info('登录成功后重新初始化安全配置管理器')
+            except Exception as e:
+                logger.warning(f'重新初始化安全配置管理器失败: {e}')
+
             notification_data = {
                 'type': '登录通知',
                 'icon': '✅',
@@ -1058,6 +1067,13 @@ class JdSeckill(object):
                 logger.info('预约成功，已获得抢购资格 / 您已成功预约过了，无需重复预约')
 
                 # 发送详细的预约成功通知
+                # 确保使用最新的安全配置管理器
+                try:
+                    from helper.secure_config import SecureConfigManager
+                    self.secure_config = SecureConfigManager()
+                except Exception as e:
+                    logger.warning(f'重新初始化安全配置管理器失败: {e}')
+
                 notification_data = {
                     'type': '预约通知',
                     'icon': '✅',
@@ -1115,11 +1131,19 @@ class JdSeckill(object):
 
     def get_sku_title(self):
         """获取商品名称"""
-        url = 'https://item.jd.com/{}.html'.format(global_config.getRaw('config', 'sku_id'))
-        resp = self.session.get(url).content
-        x_data = etree.HTML(resp)
-        sku_title = x_data.xpath('/html/head/title/text()')
-        return sku_title[0]
+        try:
+            url = 'https://item.jd.com/{}.html'.format(global_config.getRaw('config', 'sku_id'))
+            resp = self.session.get(url, timeout=5).content
+            x_data = etree.HTML(resp)
+            sku_title = x_data.xpath('/html/head/title/text()')
+            if sku_title:
+                return sku_title[0]
+            else:
+                # 如果没有找到标题，返回默认值
+                return f"商品ID: {global_config.getRaw('config', 'sku_id')}"
+        except Exception as e:
+            logger.warning(f'获取商品标题失败: {e}')
+            return f"商品ID: {global_config.getRaw('config', 'sku_id')}"
 
     def get_seckill_url(self):
         """获取商品的抢购链接
@@ -1689,7 +1713,7 @@ class JdSeckill(object):
 
                 if sckey and sckey.strip():
                     full_message = f"{title}\n{message}"
-                    send_wechat(full_message)
+                    send_wechat(full_message, self.secure_config)
                     logger.info('微信通知发送成功')
                 else:
                     logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
@@ -1729,7 +1753,7 @@ class JdSeckill(object):
                     )
 
                 if sckey and sckey.strip():
-                    send_wechat(markdown_message)
+                    send_wechat(markdown_message, self.secure_config)
                     logger.info('微信通知发送成功')
                 else:
                     logger.warning('微信通知已启用但SCKEY未配置，跳过通知发送')
@@ -2103,6 +2127,15 @@ class JdSeckill(object):
                             # 更新配置：启用通知并保存SCKEY
                             self.secure_config.update_messenger_config(enable=True, sckey=sckey)
                             print("✅ 微信通知配置完成")
+
+                            # 重新初始化安全配置管理器以确保新配置立即生效
+                            try:
+                                from helper.secure_config import SecureConfigManager
+                                self.secure_config = SecureConfigManager()
+                                print("✅ 配置已重新加载，微信通知功能已激活")
+                            except Exception as e:
+                                logger.warning(f'重新加载安全配置失败: {e}')
+
                             self.config_setup_completed['wechat_notification'] = True
                             break
                         else:
@@ -2116,6 +2149,15 @@ class JdSeckill(object):
                     # 用户选择不启用微信通知
                     print("✅ 已选择禁用微信通知")
                     self.secure_config.update_messenger_config(enable=False, sckey=None)
+
+                    # 重新初始化安全配置管理器以确保新配置立即生效
+                    try:
+                        from helper.secure_config import SecureConfigManager
+                        self.secure_config = SecureConfigManager()
+                        print("✅ 配置已重新加载")
+                    except Exception as e:
+                        logger.warning(f'重新加载安全配置失败: {e}')
+
                     self.config_setup_completed['wechat_notification'] = True
                     break
 

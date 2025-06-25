@@ -7,3 +7,5 @@ urllib3==1.25.9
 pyinstaller>=4.0
 Pillow>=8.0.0
 psutil>=5.8.0
+selenium>=4.0.0
+webdriver-manager>=3.8.0
