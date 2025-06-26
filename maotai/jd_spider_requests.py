@@ -1007,101 +1007,208 @@ class JdSeckill(object):
             logger.warning(f'安全网络预热失败: {e}')
 
     def make_reserve(self):
-        """商品预约"""
+        """商品预约 - 新版移动端预约流程"""
         logger.info('商品名称:{}'.format(self.get_sku_title()))
-        url = 'https://yushou.jd.com/youshouinfo.action'
-        payload = {
-            'callback': 'fetchJSON',
-            'sku': self.sku_id,
-            '_': str(int(time.time() * 1000)),
-        }
-        headers = {
-            'User-Agent': self.user_agent,
-            'Referer': 'https://item.jd.com/{}.html'.format(self.sku_id),
-        }
-        resp = self.session.get(url=url, params=payload, headers=headers)
 
-        # 检查响应内容类型
-        content_type = resp.headers.get('Content-Type', '')
-        logger.info(f'预约接口响应类型: {content_type}')
-        logger.info(f'预约接口响应状态: {resp.status_code}')
+        print("\n" + "="*60)
+        print("📱 茅台预约说明")
+        print("="*60)
+        print("根据京东最新规则：")
+        print("1. 茅台等特殊商品无法在电脑端预约")
+        print("2. 必须使用京东APP手机端进行预约")
+        print("3. 预约时间：工作日全天24小时（除抢购时间）")
+        print("4. 抢购时间：工作日12:00-12:30（此时无法预约）")
+        print("5. 建议预约时间：工作日任意时间（避开12:00-12:30）")
+        print("="*60)
+        print("请使用以下方式进行预约：")
+        print("📱 打开京东APP")
+        print("🔍 搜索商品ID: {}".format(self.sku_id))
+        print("📅 在预约时间内点击预约按钮")
+        print("✅ 预约成功后可使用本程序进行抢购")
+        print("="*60)
 
-        # 如果返回的是HTML页面，说明接口可能失效或需要登录
-        if 'text/html' in content_type:
-            logger.warning('预约接口返回HTML页面，可能需要登录或接口已失效')
-            if '登录' in resp.text or 'login' in resp.text.lower():
-                print("\n" + "="*60)
-                print("🔐 登录已过期")
-                print("="*60)
-                print("检测到登录状态已过期，需要重新登录")
-                print("请使用京东APP扫描二维码重新登录")
-                print("="*60)
-                logger.info('检测到需要重新登录，开始二维码登录流程')
-                # 重新登录
-                self.qrlogin.is_login = False  # 强制重新登录
-                self.login_by_qrcode()
-                # 重新尝试预约
-                resp = self.session.get(url=url, params=payload, headers=headers)
-                content_type = resp.headers.get('Content-Type', '')
-                if 'text/html' in content_type:
-                    raise Exception('重新登录后预约接口仍然失效')
-            else:
-                raise Exception('预约接口可能已失效，返回了HTML页面而非JSON数据')
+        # 检查是否已经预约过（通过检查商品页面状态）
+        reserve_status = self._check_reserve_status()
 
+        if not reserve_status:
+            # 提供详细的手动预约指导
+            self._show_manual_reserve_guide()
+
+        return reserve_status
+
+    def _show_manual_reserve_guide(self):
+        """显示手动预约指导"""
+        print("\n" + "="*60)
+        print("📱 手动预约指导")
+        print("="*60)
+        print("由于京东预约接口需要复杂的签名验证，")
+        print("建议使用以下方式手动完成预约：")
+        print("")
+        print("📱 方法一：京东APP预约")
+        print("   1. 打开京东APP")
+        print(f"   2. 搜索商品ID: {self.sku_id}")
+        print("   3. 进入商品页面")
+        print("   4. 点击'立即预约'按钮")
+        print("   5. 确认预约信息")
+        print("")
+        print("🌐 方法二：京东移动端网页")
+        print(f"   1. 打开链接: https://item.m.jd.com/product/{self.sku_id}.html")
+        print("   2. 登录京东账号")
+        print("   3. 点击'立即预约'按钮")
+        print("")
+        print("⏰ 预约时间提醒：")
+        print("   - 预约时间：工作日全天24小时")
+        print("   - 抢购时间：工作日12:00-12:30")
+        print("   - 建议在抢购前完成预约")
+        print("")
+        print("✅ 预约完成后，本程序可自动执行秒杀")
+        print("="*60)
+
+    def _check_reserve_status(self):
+        """检查预约状态 - 使用真实的预约列表接口"""
         try:
-            resp_json = parse_json(resp.text)
-            logger.info(f'预约接口返回数据: {resp_json}')
+            print("\n🔍 正在检查预约状态...")
+
+            # 使用真实的预约列表接口检查
+            reserve_status = self._check_qualification_list()
+            if reserve_status is not None:
+                return reserve_status
+
+            print("\n❓ 无法确定预约状态")
+            print("建议手动检查：")
+            print(f"1. 打开京东APP搜索商品ID: {self.sku_id}")
+            print("2. 查看商品页面是否显示'已预约'或'立即预约'")
+            print("3. 或访问：https://yushou.jd.com/member/qualificationList.action")
+            logger.warning('无法确定商品预约状态')
+            return False
+
         except Exception as e:
-            logger.error(f'解析预约接口响应失败: {e}')
-            logger.error(f'响应内容前200字符: {resp.text[:200]}')
-            raise Exception(f'预约接口响应格式错误: {e}')
+            logger.error(f'检查预约状态时发生错误: {e}')
+            return False
 
-        reserve_url = resp_json.get('url')
-        if not reserve_url:
-            logger.error('预约接口未返回预约URL')
-            raise Exception('预约接口未返回有效的预约URL')
-        self.timers.start()
-        while True:
-            try:
-                self.session.get(url='https:' + reserve_url)
-                logger.info('预约成功，已获得抢购资格 / 您已成功预约过了，无需重复预约')
+    def _check_qualification_list(self):
+        """检查预约资格列表 - 真实的预约状态检测"""
+        try:
+            # 先访问主页建立正常访问轨迹
+            self._visit_yushou_homepage()
 
-                # 发送详细的预约成功通知
-                # 确保使用最新的安全配置管理器
-                try:
-                    from helper.secure_config import SecureConfigManager
-                    self.secure_config = SecureConfigManager()
-                except Exception as e:
-                    logger.warning(f'重新初始化安全配置管理器失败: {e}')
+            url = 'https://yushou.jd.com/member/qualificationList.action'
+            headers = {
+                'User-Agent': self.user_agent,
+                'Referer': 'https://yushou.jd.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Upgrade-Insecure-Requests': '1',
+            }
 
-                notification_data = {
-                    'type': '预约通知',
-                    'icon': '✅',
-                    'title': '预约成功',
-                    'summary': '商品预约已完成，获得抢购资格',
-                    'reserve_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'reserve_status': '成功',
-                    'reserve_result': '已获得抢购资格',
-                    'reserve_success': True
-                }
-                self.send_detailed_notification(notification_data)
-                break
-            except Exception as e:
-                logger.error('预约失败正在重试...')
+            resp = self.session.get(url=url, headers=headers, timeout=10)
 
-                # 发送预约失败通知
-                notification_data = {
-                    'type': '预约通知',
-                    'icon': '❌',
-                    'title': '预约失败',
-                    'summary': '预约执行失败，系统将自动重试',
-                    'reserve_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'reserve_status': '失败',
-                    'reserve_result': '预约未成功',
-                    'reserve_success': False,
-                    'error_message': str(e)
-                }
-                self.send_detailed_notification(notification_data)
+            print(f"🔍 预约列表接口调试:")
+            print(f"   状态码: {resp.status_code}")
+            print(f"   内容类型: {resp.headers.get('Content-Type', 'unknown')}")
+            print(f"   响应长度: {len(resp.text)} 字符")
+
+            if resp.status_code == 200:
+                # 检查是否遇到风控页面
+                if 'risk_handler' in resp.text or 'ipaas-floor-app' in resp.text:
+                    print("🚨 检测到风控页面")
+                    print("   京东检测到异常访问，触发了风控机制")
+                    print("   无法通过程序自动检测预约状态")
+                    print("")
+                    print("📋 请手动验证预约状态：")
+                    print("   1. 打开浏览器访问：https://yushou.jd.com/member/qualificationList.action")
+                    print("   2. 登录京东账号")
+                    print(f"   3. 查看页面中是否包含商品ID: {self.sku_id}")
+                    print("   4. 如果页面显示商品信息，说明已预约成功")
+                    print("")
+                    logger.warning('预约列表检测：遇到风控页面，无法自动检测')
+                    return None
+
+                # 检查页面中是否包含当前商品ID
+                sku_id_str = str(self.sku_id)
+                if sku_id_str in resp.text:
+                    print("✅ 检测到已预约成功！")
+                    print(f"   商品ID {self.sku_id} 在预约列表中找到")
+
+                    # 查找具体的匹配位置
+                    import re
+                    matches = []
+                    for match in re.finditer(sku_id_str, resp.text):
+                        start = max(0, match.start() - 50)
+                        end = min(len(resp.text), match.end() + 50)
+                        context = resp.text[start:end]
+                        matches.append(context)
+
+                    print(f"   找到 {len(matches)} 处匹配:")
+                    for i, match in enumerate(matches[:3]):  # 只显示前3个匹配
+                        print(f"   匹配{i+1}: ...{match}...")
+
+                    logger.info(f'预约列表检测：商品 {self.sku_id} 已预约成功')
+                    return True
+                else:
+                    print("⚠️ 未检测到预约记录")
+                    print(f"   商品ID {self.sku_id} 不在预约列表中")
+                    logger.info(f'预约列表检测：商品 {self.sku_id} 未预约')
+
+                    # 检查是否是登录问题
+                    if '登录' in resp.text or 'login' in resp.text.lower():
+                        print("❌ 检测到登录状态异常")
+                        logger.warning('预约列表检测：登录状态异常')
+                        return None
+
+                    return False
+            else:
+                print(f"❌ 预约列表接口访问失败，状态码: {resp.status_code}")
+                logger.error(f'预约列表接口访问失败，状态码: {resp.status_code}')
+                return None
+
+        except Exception as e:
+            print(f"❌ 预约列表检测异常: {e}")
+            logger.error(f'预约列表检测异常: {e}')
+            return None
+
+    def _visit_yushou_homepage(self):
+        """访问预约主页建立正常访问轨迹"""
+        try:
+            url = 'https://yushou.jd.com/'
+            headers = {
+                'User-Agent': self.user_agent,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Upgrade-Insecure-Requests': '1',
+            }
+
+            resp = self.session.get(url=url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                logger.info('成功访问预约主页')
+            else:
+                logger.warning(f'访问预约主页失败，状态码: {resp.status_code}')
+
+        except Exception as e:
+            logger.warning(f'访问预约主页异常: {e}')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def get_username(self):
         """获取用户信息"""
@@ -1446,13 +1553,14 @@ class JdSeckill(object):
             }
 
         # 工作日逻辑
-        # 预约时间：从配置读取
+        # 预约时间：工作日全天24小时（除抢购时间12:00-12:30）
         # 抢购时间：12:00-12:30
-        reserve_time = datetime.combine(now.date(), datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
         buy_time_str = global_config.getRaw('config', 'buy_time')
         last_purchase_time_str = global_config.getRaw('config', 'last_purchase_time')
 
+        # 抢购开始时间（12:00）
         buy_time = datetime.strptime(f"{now.date()} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
+        # 抢购结束时间（12:30）
         last_purchase_time = datetime.strptime(f"{now.date()} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
 
         # 如果当前时间已经过了最后购买时间，则考虑明天（如果明天是工作日）
@@ -1460,7 +1568,6 @@ class JdSeckill(object):
             tomorrow = now.date() + timedelta(days=1)
             # 检查明天是否为工作日
             if tomorrow.weekday() < 5:  # 明天是工作日
-                reserve_time = datetime.combine(tomorrow, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
                 buy_time = datetime.strptime(f"{tomorrow} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
                 last_purchase_time = datetime.strptime(f"{tomorrow} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
             else:
@@ -1469,32 +1576,15 @@ class JdSeckill(object):
                 while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
                     days_to_add += 1
                 next_workday = now.date() + timedelta(days=days_to_add)
-                reserve_time = datetime.combine(next_workday, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
                 buy_time = datetime.strptime(f"{next_workday} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
                 last_purchase_time = datetime.strptime(f"{next_workday} {last_purchase_time_str}", "%Y-%m-%d %H:%M:%S.%f")
 
         # 计算时间差
-        time_to_reserve = (reserve_time - now).total_seconds()
         time_to_buy = (buy_time - now).total_seconds()
         time_to_end = (last_purchase_time - now).total_seconds()
 
-        if now < reserve_time:  # 还没到预约时间
-            return {
-                'status': 'waiting_reserve',
-                'action': '等待预约时间',
-                'time_to_action': time_to_reserve,
-                'next_action_time': reserve_time,
-                'description': f'距离预约时间({reserve_time_str[:5]})还有 {int(time_to_reserve//3600)}小时{int((time_to_reserve%3600)//60)}分钟'
-            }
-        elif now < buy_time:  # 预约时间段（配置时间-12:00）
-            return {
-                'status': 'reserve_time',
-                'action': '执行预约',
-                'time_to_action': time_to_buy,
-                'next_action_time': buy_time,
-                'description': f'预约时间段，距离秒杀(12:00)还有 {int(time_to_buy//60)}分钟{int(time_to_buy%60)}秒'
-            }
-        elif now < last_purchase_time:  # 秒杀时间段（12:00-12:30）
+        # 新的预约逻辑：工作日全天24小时都可以预约（除了抢购时间12:00-12:30）
+        if buy_time <= now <= last_purchase_time:  # 抢购时间段（12:00-12:30）
             return {
                 'status': 'seckill_time',
                 'action': '执行秒杀',
@@ -1502,23 +1592,49 @@ class JdSeckill(object):
                 'next_action_time': buy_time,
                 'description': f'秒杀时间段(12:00-12:30)，距离结束还有 {int(time_to_end//60)}分钟{int(time_to_end%60)}秒'
             }
-        else:  # 已经过了秒杀时间
-            # 找到下一个工作日
-            tomorrow = now.date() + timedelta(days=1)
-            days_to_add = 1
-            while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
-                days_to_add += 1
-            next_workday = now.date() + timedelta(days=days_to_add)
-            next_reserve_time = datetime.combine(next_workday, datetime.strptime(reserve_time_str, "%H:%M:%S.%f").time())
-            time_to_next = (next_reserve_time - now).total_seconds()
-
+        elif now < buy_time:  # 抢购前的预约时间段（工作日全天）
             return {
-                'status': 'finished',
-                'action': '等待下个工作日',
-                'time_to_action': time_to_next,
-                'next_action_time': next_reserve_time,
-                'description': f'今日抢购已结束，等待下个工作日{reserve_time_str[:5]}预约'
+                'status': 'reserve_time',
+                'action': '执行预约',
+                'time_to_action': time_to_buy,
+                'next_action_time': buy_time,
+                'description': f'预约时间段（工作日全天），距离秒杀(12:00)还有 {int(time_to_buy//3600)}小时{int((time_to_buy%3600)//60)}分钟'
             }
+        else:  # 抢购时间之后，继续预约时间段（工作日全天）
+            # 检查是否还在同一个工作日
+            if now.date() == buy_time.date():
+                # 同一天，继续预约状态
+                # 计算到明天抢购时间的时间差
+                tomorrow_buy_time = buy_time + timedelta(days=1)
+                # 如果明天不是工作日，找到下一个工作日
+                while tomorrow_buy_time.weekday() >= 5:
+                    tomorrow_buy_time += timedelta(days=1)
+
+                time_to_next_buy = (tomorrow_buy_time - now).total_seconds()
+
+                return {
+                    'status': 'reserve_time',
+                    'action': '执行预约',
+                    'time_to_action': time_to_next_buy,
+                    'next_action_time': tomorrow_buy_time,
+                    'description': f'预约时间段（工作日全天），距离明日秒杀还有 {int(time_to_next_buy//3600)}小时{int((time_to_next_buy%3600)//60)}分钟'
+                }
+            else:
+                # 已经跨天了，找到下一个工作日
+                days_to_add = 1
+                while (now.date() + timedelta(days=days_to_add)).weekday() >= 5:
+                    days_to_add += 1
+                next_workday = now.date() + timedelta(days=days_to_add)
+                next_buy_time = datetime.strptime(f"{next_workday} {buy_time_str}", "%Y-%m-%d %H:%M:%S.%f")
+                time_to_next = (next_buy_time - now).total_seconds()
+
+                return {
+                    'status': 'reserve_time',
+                    'action': '执行预约',
+                    'time_to_action': time_to_next,
+                    'next_action_time': next_buy_time,
+                    'description': f'预约时间段（工作日全天），距离下个工作日秒杀还有 {int(time_to_next//3600)}小时{int((time_to_next%3600)//60)}分钟'
+                }
 
     def auto_mode(self):
         """全自动化模式 - 预约+秒杀一体化"""
